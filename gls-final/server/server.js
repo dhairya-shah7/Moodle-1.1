@@ -48,16 +48,24 @@ const ALLOWED_ORIGINS = new Set(
     process.env.APP_ORIGIN,
   ].filter(Boolean)
 )
-app.use('/proxy', cors({
-  origin: (origin, cb) => {
-    if (process.env.NODE_ENV !== 'production') {
-      return cb(null, true)
-    }
-    if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true)
-    cb(new Error('Blocked by CORS'))
-  },
-  credentials: true,
-}))
+app.use('/proxy', (req, res, next) => {
+  const host = req.headers.host
+  cors({
+    origin: (origin, cb) => {
+      if (process.env.NODE_ENV !== 'production') {
+        return cb(null, true)
+      }
+      if (!origin) return cb(null, true)
+      
+      const cleanOrigin = origin.replace(/^https?:\/\//, '')
+      if (cleanOrigin === host || ALLOWED_ORIGINS.has(origin) || cleanOrigin.endsWith('.onrender.com') || cleanOrigin.endsWith('.railway.app')) {
+        return cb(null, true)
+      }
+      cb(new Error('Blocked by CORS'))
+    },
+    credentials: true,
+  })(req, res, next)
+})
 
 // ══════════════════════════════════════════
 // 3. RATE LIMITING
