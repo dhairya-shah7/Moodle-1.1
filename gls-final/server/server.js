@@ -48,7 +48,7 @@ const ALLOWED_ORIGINS = new Set(
     process.env.APP_ORIGIN,
   ].filter(Boolean)
 )
-app.use(cors({
+app.use('/proxy', cors({
   origin: (origin, cb) => {
     if (process.env.NODE_ENV !== 'production') {
       return cb(null, true)
