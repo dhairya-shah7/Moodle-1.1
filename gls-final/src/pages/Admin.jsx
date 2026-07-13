@@ -30,7 +30,7 @@ export default function Admin() {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginTop: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))', gap: 16, marginTop: 8 }}>
         {links.map(l => (
           <a key={l.url} href={l.url} target="_blank" rel="noreferrer"
             style={{ textDecoration: 'none', color: 'inherit' }}>

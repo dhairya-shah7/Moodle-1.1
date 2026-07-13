@@ -75,7 +75,7 @@ export default function Submissions() {
         <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{getFormattedDate()}</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 32 }}>
+      <div className="submissions-layout">
 
         {/* Left: assignment list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -211,7 +211,7 @@ export default function Submissions() {
                           )}
 
                           {/* Grading controls */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr 160px', gap: 16 }}>
+                          <div className="grading-controls-grid">
                             <div style={{ position: 'relative' }}>
                               <GraduationCap size={16} color="var(--text3)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
                               <input

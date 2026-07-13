@@ -297,7 +297,7 @@ export default function Files() {
                     <Folder size={12} /> {secName} &nbsp;·&nbsp; {secFiles.length} item{secFiles.length !== 1 ? 's' : ''}
                   </div>
                   {viewMode === 'grid' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, padding: '18px 22px 20px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: 16, padding: '18px 22px 20px' }}>
                       {secFiles.map((f, i) => <FileCard key={i} f={f} />)}
                     </div>
                   ) : (

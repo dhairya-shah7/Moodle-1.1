@@ -6,15 +6,15 @@
 ══════════════════════════════════════════ */
 :root {
   /* backgrounds */
-  --bg-raw: #09090b;
-  --bg: #09090b;
-  --surface: #18181b;
-  --surface2: #27272a;
-  --surface3: #3f3f46;
+  --bg-raw: #1A1D21;
+  --bg: #1A1D21;
+  --surface: #2A2F38;
+  --surface2: #353A45;
+  --surface3: #444b5a;
 
   /* borders */
-  --border: #27272a;
-  --border2: #3f3f46;
+  --border: #353A45;
+  --border2: #444b5a;
 
   /* text */
   --text: #fafafa;
@@ -38,9 +38,9 @@
   --danger-bd: rgba(239, 68, 68, 0.12);
 
   /* bg orbs used in mesh (greatly softened) */
-  --orb1: rgba(39, 39, 42, 0.4);
-  --orb2: rgba(24, 24, 27, 0.2);
-  --orb3: rgba(9, 9, 11, 0.8);
+  --orb1: rgba(53, 58, 69, 0.4);
+  --orb2: rgba(42, 47, 56, 0.2);
+  --orb3: rgba(26, 29, 33, 0.8);
 
   /* misc */
   --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
@@ -1498,5 +1498,44 @@ body.light .login-box {
   
   .profile-courses-cols {
     column-count: 1;
+  }
+}
+
+/* Responsive layout classes for Submissions and Grading components */
+.submissions-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 32px;
+}
+
+.grading-controls-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr 160px;
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .submissions-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .grading-controls-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }

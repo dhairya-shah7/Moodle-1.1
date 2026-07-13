@@ -11,6 +11,121 @@ import toast from 'react-hot-toast'
 
 const MAX_SIZE = 2 * 1024 * 1024
 
+const loadScript = (url) => {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${url}"]`)) {
+      resolve()
+      return
+    }
+    const script = document.createElement('script')
+    script.src = url
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error(`Failed to load script: ${url}`))
+    document.head.appendChild(script)
+  })
+}
+
+const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js')
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+  const { jsPDF } = window.jspdf
+  const doc = new jsPDF()
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const viewport = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+
+    await page.render({ canvasContext: context, viewport }).promise
+
+    const imgData = canvas.toDataURL('image/jpeg', quality)
+
+    if (i > 1) {
+      doc.addPage()
+    }
+
+    const pdfWidth = doc.internal.pageSize.getWidth()
+    const pdfHeight = doc.internal.pageSize.getHeight()
+    doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
+  }
+
+  const compressedBlob = doc.output('blob')
+  return new File([compressedBlob], file.name.replace(/\.pdf$/i, '_compressed.pdf'), {
+    type: 'application/pdf'
+  })
+}
+
+const compressDOCX = async (file) => {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js')
+
+  const arrayBuffer = await file.arrayBuffer()
+  const zip = await window.JSZip.loadAsync(arrayBuffer)
+
+  const mediaFolder = zip.folder('word/media')
+  if (mediaFolder) {
+    const promises = []
+    mediaFolder.forEach((relativePath, zipEntry) => {
+      if (/\.(jpe?g|png|gif|webp)$/i.test(zipEntry.name)) {
+        promises.push((async () => {
+          try {
+            const imgBuffer = await zipEntry.async('arraybuffer')
+            const blob = new Blob([imgBuffer])
+            const bitmap = await createImageBitmap(blob)
+
+            const canvas = document.createElement('canvas')
+            const ctx = canvas.getContext('2d')
+
+            let width = bitmap.width
+            let height = bitmap.height
+            const maxDim = 1200
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width)
+                width = maxDim
+              } else {
+                width = Math.round((width * maxDim) / height)
+                height = maxDim
+              }
+            }
+
+            canvas.width = width
+            canvas.height = height
+            ctx.drawImage(bitmap, 0, 0, width, height)
+
+            const compressedBlob = await new Promise(resolve => {
+              canvas.toBlob(resolve, 'image/jpeg', 0.6)
+            })
+
+            if (compressedBlob) {
+              zip.file(zipEntry.name, compressedBlob)
+            }
+          } catch (e) {
+            console.warn('Failed to compress document image', zipEntry.name, e)
+          }
+        })())
+      }
+    })
+
+    if (promises.length > 0) {
+      await Promise.all(promises)
+    }
+  }
+
+  const compressedBlob = await zip.generateAsync({ type: 'blob' })
+  return new File([compressedBlob], file.name.replace(/\.docx$/i, '_compressed.docx'), {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  })
+}
+
 export default function AssignmentModal({ assignment, onClose }) {
   const moodle = useMoodle()
   const { submissions, refreshSubmission, ignoredAssignmentIds = [], ignoreAssignment, unignoreAssignment, role } = useAppData()
@@ -27,6 +142,55 @@ export default function AssignmentModal({ assignment, onClose }) {
   const [uploadDone, setUploadDone] = useState(false)
   const [error, setError] = useState('')
   const fileInputRef = useRef()
+  const compressorFileInputRef = useRef()
+  const [compressDragOver, setCompressDragOver] = useState(false)
+  const [compressing, setCompressing] = useState(false)
+
+  const handleCompressAndSelect = async (file) => {
+    if (!file) return
+    setError('')
+    setUploadDone(false)
+
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (ext !== 'pdf' && ext !== 'docx') {
+      toast.error('Only PDF and Word (.docx) files are supported for compression.')
+      return
+    }
+
+    setCompressing(true)
+    try {
+      let resultFile = file
+      if (ext === 'pdf') {
+        toast.loading('Compressing PDF...', { id: 'compress' })
+        resultFile = await compressPDF(file)
+      } else if (ext === 'docx') {
+        toast.loading('Compressing Word Document...', { id: 'compress' })
+        resultFile = await compressDOCX(file)
+      }
+
+      if (resultFile.size > MAX_SIZE) {
+        if (ext === 'pdf') {
+          toast.loading('Applying extra compression...', { id: 'compress' })
+          resultFile = await compressPDF(resultFile, 0.4, 1.0)
+        }
+      }
+
+      if (resultFile.size > MAX_SIZE) {
+        toast.error(`Compressed file is still ${(resultFile.size / (1024 * 1024)).toFixed(2)}MB (exceeds 2MB).`, { id: 'compress' })
+        setError(`Compressed file size (${(resultFile.size / (1024 * 1024)).toFixed(2)}MB) exceeds 2MB limit.`)
+      } else {
+        setSelectedFile(resultFile)
+        toast.success(`Successfully compressed to ${(resultFile.size / 1024).toFixed(0)} KB!`, { id: 'compress' })
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error('Compression failed: ' + err.message, { id: 'compress' })
+      setError('Compression failed: ' + err.message)
+    } finally {
+      setCompressing(false)
+    }
+  }
+
   const s = assignStatus(assignment)
 
   const handleFile = (file) => {
@@ -81,9 +245,9 @@ export default function AssignmentModal({ assignment, onClose }) {
   return (
     <div
       onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'grid', placeItems: 'center', overflowY: 'auto', padding: '40px 16px' }}
     >
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', padding: 32, position: 'relative' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, width: '100%', maxWidth: 600, padding: 32, position: 'relative' }}>
 
         {/* Close btn */}
         <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -219,34 +383,79 @@ export default function AssignmentModal({ assignment, onClose }) {
           {submittedFiles.length > 0 ? 'Edit Submission' : 'Submit Assignment'}
         </div>
 
-        {/* Drag & Drop */}
-        <div
-          onDrop={onDrop}
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onClick={() => fileInputRef.current.click()}
-          style={{
-            border: `2px dashed ${dragOver ? 'var(--accent)' : selectedFile ? 'var(--success)' : 'var(--border)'}`,
-            borderRadius: 12, padding: '28px 20px', textAlign: 'center', cursor: 'pointer',
-            background: dragOver ? 'rgba(59,130,246,0.06)' : selectedFile ? 'rgba(16,185,129,0.06)' : 'var(--surface2)',
-            transition: 'all .2s', marginBottom: 12,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-            {selectedFile ? <File size={32} className="text-success" /> : <UploadCloud size={32} style={{ color: 'var(--text3)' }} />}
+        {/* Dual upload/compress containers */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 16, marginBottom: 16 }}>
+          {/* Main Drop Box */}
+          <div
+            onDrop={onDrop}
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onClick={() => fileInputRef.current.click()}
+            style={{
+              border: `2px dashed ${dragOver ? 'var(--accent)' : selectedFile ? 'var(--success)' : 'var(--border)'}`,
+              borderRadius: 12, padding: '24px 16px', textAlign: 'center', cursor: 'pointer',
+              background: dragOver ? 'rgba(99,102,241,0.06)' : selectedFile ? 'rgba(16,185,129,0.06)' : 'var(--surface2)',
+              transition: 'all .2s',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 140
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+              {selectedFile ? <File size={28} className="text-success" /> : <UploadCloud size={28} style={{ color: 'var(--text3)' }} />}
+            </div>
+            {selectedFile ? (
+              <>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{selectedFile.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>{(selectedFile.size / 1024).toFixed(0)} KB · ready</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 3 }}>Submit Assignment</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Drag & drop or browse (Max 2MB)</div>
+              </>
+            )}
+            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
           </div>
-          {selectedFile ? (
-            <>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3 }}>{selectedFile.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{(selectedFile.size / 1024).toFixed(0)} KB · ready to upload</div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>Drag & drop your file here</div>
-              <div style={{ fontSize: 12, color: 'var(--text3)' }}>or click to browse — Maximum 2MB</div>
-            </>
-          )}
-          <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={e => handleFile(e.target.files[0])} />
+
+          {/* PDF/Word Compressor Box */}
+          <div
+            onDrop={async (e) => {
+              e.preventDefault()
+              setCompressDragOver(false)
+              if (e.dataTransfer.files[0]) {
+                await handleCompressAndSelect(e.dataTransfer.files[0])
+              }
+            }}
+            onDragOver={e => { e.preventDefault(); setCompressDragOver(true) }}
+            onDragLeave={() => setCompressDragOver(false)}
+            onClick={() => compressorFileInputRef.current.click()}
+            style={{
+              border: `2px dashed ${compressDragOver ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 12, padding: '24px 16px', textAlign: 'center', cursor: 'pointer',
+              background: compressDragOver ? 'rgba(99,102,241,0.06)' : 'var(--surface2)',
+              transition: 'all .2s',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 140
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+              {compressing ? <Loader2 size={28} className="spin text-accent" /> : <FileText size={28} style={{ color: 'var(--text3)' }} />}
+            </div>
+            {compressing ? (
+              <>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>Compressing...</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Optimizing file below 2MB</div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 3 }}>PDF/Word Compressor</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Browse/drop here to auto-compress</div>
+              </>
+            )}
+            <input ref={compressorFileInputRef} type="file" accept=".pdf,.docx" style={{ display: 'none' }} onChange={async (e) => {
+              if (e.target.files[0]) {
+                await handleCompressAndSelect(e.target.files[0])
+              }
+            }} />
+          </div>
         </div>
 
         {error && (
@@ -316,6 +525,9 @@ export default function AssignmentModal({ assignment, onClose }) {
             <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(assignment.intro) }} />
           </div>
         )}
+
+        {/* Scroll spacer */}
+        <div style={{ height: 24 }} />
       </div>
     </div >
   )

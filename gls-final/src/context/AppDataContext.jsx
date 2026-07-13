@@ -20,49 +20,58 @@ export function AppDataProvider({ children }) {
   const prevFileCount  = useRef(0)
   const toastedIds     = useRef(new Set())
 
-  const [hiddenCourseIds, setHiddenCourseIds] = useState(() => {
-    try {
-      const stored = localStorage.getItem('moodle_hidden_courses')
-      return stored ? JSON.parse(stored) : []
-    } catch (e) {
-      return []
-    }
-  })
+  const [hiddenCourseIds, setHiddenCourseIds] = useState([])
+  const [ignoredAssignmentIds, setIgnoredAssignmentIds] = useState([])
 
-  const [ignoredAssignmentIds, setIgnoredAssignmentIds] = useState(() => {
-    try {
-      const stored = localStorage.getItem('moodle_ignored_assignments')
-      return stored ? JSON.parse(stored) : []
-    } catch (e) {
-      return []
+  useEffect(() => {
+    if (user?.userid) {
+      try {
+        const storedCourses = localStorage.getItem(`moodle_hidden_courses_${user.userid}`)
+        setHiddenCourseIds(storedCourses ? JSON.parse(storedCourses) : [])
+      } catch (e) {
+        setHiddenCourseIds([])
+      }
+      try {
+        const storedAssignments = localStorage.getItem(`moodle_ignored_assignments_${user.userid}`)
+        setIgnoredAssignmentIds(storedAssignments ? JSON.parse(storedAssignments) : [])
+      } catch (e) {
+        setIgnoredAssignmentIds([])
+      }
+    } else {
+      setHiddenCourseIds([])
+      setIgnoredAssignmentIds([])
     }
-  })
+  }, [user?.userid])
 
   const hideCourse = (courseId) => {
+    if (!user?.userid) return
     setHiddenCourseIds(prev => {
       const next = prev.includes(courseId) ? prev : [...prev, courseId]
-      localStorage.setItem('moodle_hidden_courses', JSON.stringify(next))
+      localStorage.setItem(`moodle_hidden_courses_${user.userid}`, JSON.stringify(next))
       return next
     })
   }
 
   const restoreAllCourses = () => {
+    if (!user?.userid) return
     setHiddenCourseIds([])
-    localStorage.removeItem('moodle_hidden_courses')
+    localStorage.removeItem(`moodle_hidden_courses_${user.userid}`)
   }
 
   const ignoreAssignment = (assignId) => {
+    if (!user?.userid) return
     setIgnoredAssignmentIds(prev => {
       const next = prev.includes(assignId) ? prev : [...prev, assignId]
-      localStorage.setItem('moodle_ignored_assignments', JSON.stringify(next))
+      localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next))
       return next
     })
   }
 
   const unignoreAssignment = (assignId) => {
+    if (!user?.userid) return
     setIgnoredAssignmentIds(prev => {
       const next = prev.filter(id => id !== assignId)
-      localStorage.setItem('moodle_ignored_assignments', JSON.stringify(next))
+      localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next))
       return next
     })
   }

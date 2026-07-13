@@ -19,7 +19,7 @@ export function useMoodle() {
   const getGrades        = (userId) => get('gradereport_overview_get_course_grades', { userid: userId })
   // Faculty/admin: fetch all courses on the site
   const getAllCourses     = () => get('core_course_get_courses')
-  const getNotifications = (userId) => get('message_popup_get_popup_notifications', { useridto: userId, newestfirst: 1, limit: 20 })
+  const getNotifications = (userId) => get('message_popup_get_popup_notifications', { userid: userId, newestfirst: 1, limit: 20 })
 
   // Faculty: get all student submissions for an assignment
   const getSubmissions = (assignId) =>

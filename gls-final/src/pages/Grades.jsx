@@ -60,7 +60,7 @@ export default function Grades() {
       </div>
 
       {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 20, marginBottom: 32 }}>
         <div className="card" style={{ padding: 24, display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Award size={28} color="var(--accent)" />
