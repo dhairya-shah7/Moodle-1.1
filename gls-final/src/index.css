@@ -1539,3 +1539,17 @@ body.light .login-box {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Dino Jump Game and Leaderboard layout styling */
+.dino-game-container {
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  gap: 20px;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .dino-game-container {
+    grid-template-columns: 1fr !important;
+  }
+}
