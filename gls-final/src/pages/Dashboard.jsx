@@ -87,13 +87,17 @@ function DinoGame({ user }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [gameOver, setGameOver] = useState(false)
   const [score, setScore] = useState(0)
-  const [highScore, setHighScore] = useState(() => {
+  const [highScore, setHighScore] = useState(0)
+
+  useEffect(() => {
     try {
-      return parseInt(localStorage.getItem('moodle_dino_high_score') || '0')
+      const key = user?.username ? `moodle_dino_high_score_${user.username}` : 'moodle_dino_high_score'
+      const saved = parseInt(localStorage.getItem(key) || localStorage.getItem('moodle_dino_high_score') || '0')
+      setHighScore(saved)
     } catch (e) {
-      return 0
+      setHighScore(0)
     }
-  })
+  }, [user?.username])
 
   // Leaderboard data
   const basePlayers = [
@@ -301,7 +305,10 @@ function DinoGame({ user }) {
             setIsPlaying(false)
             setHighScore(prev => {
               const next = Math.max(prev, Math.floor(state.score))
-              localStorage.setItem('moodle_dino_high_score', String(next))
+              const key = user?.username ? `moodle_dino_high_score_${user.username}` : 'moodle_dino_high_score'
+              try {
+                localStorage.setItem(key, String(next))
+              } catch (e) {}
               return next
             })
           }
