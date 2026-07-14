@@ -383,7 +383,9 @@ function DinoGame({ user }) {
           cursor: 'pointer',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          WebkitTapHighlightColor: 'transparent',
+          userSelect: 'none'
         }}
       >
         <canvas 
