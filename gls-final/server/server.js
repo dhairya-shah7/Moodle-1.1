@@ -7,6 +7,31 @@ const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const path = require('path')
 const fs = require('fs')
+const mongoose = require('mongoose')
+
+const MONGODB_URI = process.env.MONGODB_URI
+let isMongoConnected = false
+
+if (MONGODB_URI) {
+  mongoose.connect(MONGODB_URI)
+    .then(() => {
+      console.log('Successfully connected to MongoDB')
+      isMongoConnected = true
+    })
+    .catch(err => {
+      console.error('Failed to connect to MongoDB, falling back to local file storage:', err)
+      isMongoConnected = false
+    })
+} else {
+  console.log('MONGODB_URI not provided. Running in local JSON storage fallback mode.')
+}
+
+const ScoreSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  score: { type: Number, required: true },
+  timestamp: { type: Date, default: Date.now }
+})
+const Score = mongoose.models.Score || mongoose.model('Score', ScoreSchema)
 
 const app = express()
 const MOODLE = 'https://btech.glsmoodle.in'
@@ -309,64 +334,111 @@ app.get('/proxy/debug', (req, res) => {
 // ── Global Dino Game Leaderboard Endpoints
 const leaderboardFilePath = path.join(__dirname, 'leaderboard.json')
 
-let inMemoryLeaderboard = [
-  { name: '—', score: 0 },
-  { name: '—', score: 0 },
-  { name: '—', score: 0 },
-  { name: '—', score: 0 },
-  { name: '—', score: 0 }
-]
-
-try {
-  if (fs.existsSync(leaderboardFilePath)) {
-    const data = fs.readFileSync(leaderboardFilePath, 'utf8')
-    inMemoryLeaderboard = JSON.parse(data)
+async function getTopLeaderboard() {
+  if (isMongoConnected) {
+    try {
+      const results = await Score.aggregate([
+        {
+          $group: {
+            _id: { $toLower: "$username" },
+            name: { $first: "$username" },
+            score: { $max: "$score" }
+          }
+        },
+        { $sort: { score: -1 } },
+        { $limit: 5 }
+      ])
+      return results.map(r => ({ name: r.name, score: r.score }))
+    } catch (err) {
+      console.error('MongoDB aggregation failed, falling back to local file:', err)
+    }
   }
-} catch (e) {
-  console.error('Failed to read leaderboard file:', e)
+
+  let localList = []
+  try {
+    if (fs.existsSync(leaderboardFilePath)) {
+      const data = fs.readFileSync(leaderboardFilePath, 'utf8')
+      localList = JSON.parse(data)
+    }
+  } catch (e) {}
+
+  const uniqueMap = new Map()
+  localList.forEach(item => {
+    if (item && item.name) {
+      const key = item.name.toLowerCase()
+      const existing = uniqueMap.get(key)
+      if (!existing || item.score > existing.score) {
+        uniqueMap.set(key, item)
+      }
+    }
+  })
+
+  return Array.from(uniqueMap.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
 }
 
-app.get('/proxy/dino/leaderboard', (req, res) => {
-  res.json(inMemoryLeaderboard)
+app.get('/proxy/dino/leaderboard', async (req, res) => {
+  try {
+    const currentLeaderboard = await getTopLeaderboard()
+    res.json(currentLeaderboard)
+  } catch (e) {
+    console.error('Error fetching leaderboard:', e)
+    res.status(500).json({ error: 'Failed to fetch leaderboard' })
+  }
 })
 
-app.post('/proxy/dino/score', (req, res) => {
+app.post('/proxy/dino/score', async (req, res) => {
   try {
     const { username, score } = req.body
     if (!username || typeof score !== 'number') {
       return res.status(400).json({ error: 'Username and score required' })
     }
 
-    const cleanName = String(username).replace(/[^a-zA-Z0-9_@.\-]/g, '').slice(0, 15)
+    const cleanName = String(username).trim().slice(0, 25)
     if (!cleanName) {
       return res.status(400).json({ error: 'Invalid username' })
     }
 
-    const existingIdx = inMemoryLeaderboard.findIndex(x => x.name === cleanName)
+    if (isMongoConnected) {
+      try {
+        const newScore = new Score({ username: cleanName, score })
+        await newScore.save()
+      } catch (err) {
+        console.error('Failed to save score to MongoDB:', err)
+      }
+    }
+
+    let localList = []
+    try {
+      if (fs.existsSync(leaderboardFilePath)) {
+        const data = fs.readFileSync(leaderboardFilePath, 'utf8')
+        localList = JSON.parse(data)
+      }
+    } catch (e) {}
+
+    const existingIdx = localList.findIndex(x => x.name.toLowerCase() === cleanName.toLowerCase())
     if (existingIdx !== -1) {
-      if (score > inMemoryLeaderboard[existingIdx].score) {
-        inMemoryLeaderboard[existingIdx].score = score
+      if (score > localList[existingIdx].score) {
+        localList[existingIdx].score = score
       }
     } else {
-      const emptyIdx = inMemoryLeaderboard.findIndex(x => x.name === '—')
-      if (emptyIdx !== -1) {
-        inMemoryLeaderboard[emptyIdx] = { name: cleanName, score }
-      } else {
-        inMemoryLeaderboard.push({ name: cleanName, score })
-      }
+      localList.push({ name: cleanName, score })
     }
 
-    inMemoryLeaderboard.sort((a, b) => b.score - a.score)
-    inMemoryLeaderboard = inMemoryLeaderboard.slice(0, 5)
+    localList.sort((a, b) => b.score - a.score)
+    localList = localList.slice(0, 100)
 
     try {
-      fs.writeFileSync(leaderboardFilePath, JSON.stringify(inMemoryLeaderboard, null, 2), 'utf8')
+      fs.writeFileSync(leaderboardFilePath, JSON.stringify(localList, null, 2), 'utf8')
     } catch (e) {
-      console.error('Failed to write leaderboard file:', e)
+      console.error('Failed to write local fallback leaderboard file:', e)
     }
 
-    res.json({ success: true, leaderboard: inMemoryLeaderboard })
+    const currentLeaderboard = await getTopLeaderboard()
+    res.json({ success: true, leaderboard: currentLeaderboard })
   } catch (e) {
+    console.error('Error submitting score:', e)
     res.status(500).json({ error: 'Failed to submit score' })
   }
 })

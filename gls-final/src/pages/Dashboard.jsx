@@ -459,24 +459,30 @@ function DinoGame({ user }) {
         <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           🏆 Leaderboard
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'center' }}>
-          {leaderboard.map((player, index) => (
-            <div 
-              key={index} 
-              style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                fontSize: 12, 
-                color: player.name === user?.username ? 'var(--accent)' : 'var(--text2)',
-                fontWeight: player.name === user?.username ? 700 : 500
-              }}
-            >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
-                {getMedal(index)}{player.name}
-              </span>
-              <span style={{ fontWeight: 700 }}>{player.score}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, maxHeight: 180, overflowY: 'auto', paddingRight: 4 }}>
+          {leaderboard.length === 0 ? (
+            <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>
+              No scores recorded yet. Play to start!
             </div>
-          ))}
+          ) : (
+            leaderboard.map((player, index) => (
+              <div 
+                key={index} 
+                style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  fontSize: 12, 
+                  color: player.name.toLowerCase() === user?.username?.toLowerCase() ? 'var(--accent)' : 'var(--text2)',
+                  fontWeight: player.name.toLowerCase() === user?.username?.toLowerCase() ? 700 : 500
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                  {getMedal(index)}{player.name}
+                </span>
+                <span style={{ fontWeight: 700 }}>{player.score}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
