@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
+import { Toaster, ToastBar, toast } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { AppDataProvider, useAppData } from './context/AppDataContext'
 import NetworkBackground from './components/NetworkBackground'
@@ -74,7 +74,52 @@ function AppLayout() {
 
       <BottomNav badges={badges || {}} />
 
-      <Toaster position="bottom-right" toastOptions={{ style: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', fontFamily: "'DM Sans',sans-serif" } }} />
+      <Toaster 
+        position="bottom-right" 
+        toastOptions={{ 
+          duration: 4000,
+          style: { 
+            background: 'var(--surface2)', 
+            color: 'var(--text)', 
+            border: '1px solid var(--border)', 
+            fontFamily: "'DM Sans',sans-serif" 
+          } 
+        }} 
+      >
+        {(t) => (
+          <ToastBar toast={t}>
+            {({ icon, message }) => (
+              <>
+                {icon}
+                {message}
+                {t.type !== 'loading' && (
+                  <button 
+                    onClick={() => toast.dismiss(t.id)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text2)',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      padding: '0 4px',
+                      marginLeft: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: 0.7,
+                      transition: 'opacity 0.15s'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                    onMouseLeave={e => e.currentTarget.style.opacity = 0.7}
+                  >
+                    ✕
+                  </button>
+                )}
+              </>
+            )}
+          </ToastBar>
+        )}
+      </Toaster>
     </div>
   )
 }

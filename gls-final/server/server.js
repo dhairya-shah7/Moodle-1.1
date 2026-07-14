@@ -304,6 +304,73 @@ app.get('/proxy/debug', (req, res) => {
   res.status(403).json({ error: 'Debug endpoint disabled for security. Use Moodle API directly for testing.' })
 })
 
+// ── Global Dino Game Leaderboard Endpoints
+const fs = require('fs')
+const path = require('path')
+const leaderboardFilePath = path.join(__dirname, 'leaderboard.json')
+
+let inMemoryLeaderboard = [
+  { name: '—', score: 0 },
+  { name: '—', score: 0 },
+  { name: '—', score: 0 },
+  { name: '—', score: 0 },
+  { name: '—', score: 0 }
+]
+
+try {
+  if (fs.existsSync(leaderboardFilePath)) {
+    const data = fs.readFileSync(leaderboardFilePath, 'utf8')
+    inMemoryLeaderboard = JSON.parse(data)
+  }
+} catch (e) {
+  console.error('Failed to read leaderboard file:', e)
+}
+
+app.get('/proxy/dino/leaderboard', (req, res) => {
+  res.json(inMemoryLeaderboard)
+})
+
+app.post('/proxy/dino/score', (req, res) => {
+  try {
+    const { username, score } = req.body
+    if (!username || typeof score !== 'number') {
+      return res.status(400).json({ error: 'Username and score required' })
+    }
+
+    const cleanName = String(username).replace(/[^a-zA-Z0-9_@.\-]/g, '').slice(0, 15)
+    if (!cleanName) {
+      return res.status(400).json({ error: 'Invalid username' })
+    }
+
+    const existingIdx = inMemoryLeaderboard.findIndex(x => x.name === cleanName)
+    if (existingIdx !== -1) {
+      if (score > inMemoryLeaderboard[existingIdx].score) {
+        inMemoryLeaderboard[existingIdx].score = score
+      }
+    } else {
+      const emptyIdx = inMemoryLeaderboard.findIndex(x => x.name === '—')
+      if (emptyIdx !== -1) {
+        inMemoryLeaderboard[emptyIdx] = { name: cleanName, score }
+      } else {
+        inMemoryLeaderboard.push({ name: cleanName, score })
+      }
+    }
+
+    inMemoryLeaderboard.sort((a, b) => b.score - a.score)
+    inMemoryLeaderboard = inMemoryLeaderboard.slice(0, 5)
+
+    try {
+      fs.writeFileSync(leaderboardFilePath, JSON.stringify(inMemoryLeaderboard, null, 2), 'utf8')
+    } catch (e) {
+      console.error('Failed to write leaderboard file:', e)
+    }
+
+    res.json({ success: true, leaderboard: inMemoryLeaderboard })
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to submit score' })
+  }
+})
+
 // ── Catch unknown proxy routes
 app.all('/proxy/*', (req, res) => {
   res.status(404).json({ error: 'Unknown endpoint' })

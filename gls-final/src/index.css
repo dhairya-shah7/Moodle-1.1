@@ -1574,7 +1574,6 @@ body.light .login-box {
   }
 
   /* Touch-friendly buttons: guarantee minimum size of 42px height for primary actions */
-  button, 
   .btn,
   .btn-icon,
   .bottom-nav__sheet-actions button,

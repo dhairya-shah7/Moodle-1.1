@@ -91,69 +91,43 @@ function DinoGame({ user }) {
 
   const [leaderboard, setLeaderboard] = useState([])
 
-  const updateLeaderboard = (username, newScore) => {
+  const fetchLeaderboard = async () => {
+    try {
+      const res = await fetch('/proxy/dino/leaderboard')
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setLeaderboard(data)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch leaderboard:', e)
+    }
+  }
+
+  const submitScore = async (username, newScore) => {
     if (!username) return
     try {
-      const currentRaw = localStorage.getItem('moodle_dino_leaderboard')
-      let currentList = []
-      if (currentRaw) {
-        currentList = JSON.parse(currentRaw)
-      } else {
-        currentList = [
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 }
-        ]
-      }
-
-      // Check if user already exists
-      const existingIdx = currentList.findIndex(x => x.name === username)
-      if (existingIdx !== -1) {
-        if (newScore > currentList[existingIdx].score) {
-          currentList[existingIdx].score = newScore
-        }
-      } else {
-        // If there's an empty slot, overwrite it; otherwise add to list
-        const emptyIdx = currentList.findIndex(x => x.name === '—')
-        if (emptyIdx !== -1) {
-          currentList[emptyIdx] = { name: username, score: newScore }
-        } else {
-          currentList.push({ name: username, score: newScore })
+      const res = await fetch('/proxy/dino/score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, score: newScore })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.leaderboard) {
+          setLeaderboard(data.leaderboard)
         }
       }
-
-      // Sort and slice to top 5
-      currentList.sort((a, b) => b.score - a.score)
-      const top5 = currentList.slice(0, 5)
-
-      localStorage.setItem('moodle_dino_leaderboard', JSON.stringify(top5))
-      setLeaderboard(top5)
     } catch (e) {
-      console.error(e)
+      console.error('Failed to submit score:', e)
     }
   }
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('moodle_dino_leaderboard')
-      if (saved) {
-        setLeaderboard(JSON.parse(saved))
-      } else {
-        const initial = [
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 },
-          { name: '—', score: 0 }
-        ]
-        localStorage.setItem('moodle_dino_leaderboard', JSON.stringify(initial))
-        setLeaderboard(initial)
-      }
-    } catch (e) {
-      setLeaderboard([])
-    }
+    fetchLeaderboard()
+    const interval = setInterval(fetchLeaderboard, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -162,7 +136,7 @@ function DinoGame({ user }) {
       const saved = parseInt(localStorage.getItem(key) || localStorage.getItem('moodle_dino_high_score') || '0')
       setHighScore(saved)
       if (user?.username && saved > 0) {
-        updateLeaderboard(user.username, saved)
+        submitScore(user.username, saved)
       }
     } catch (e) {
       setHighScore(0)
@@ -364,7 +338,7 @@ function DinoGame({ user }) {
               try {
                 localStorage.setItem(key, String(next))
                 if (user?.username) {
-                  updateLeaderboard(user.username, next)
+                  submitScore(user.username, next)
                 }
               } catch (e) {}
               return next
