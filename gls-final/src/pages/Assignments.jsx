@@ -144,10 +144,6 @@ export default function Assignments() {
               return (
                 <div key={a.id} className="card assign-item" style={{ 
                   cursor: 'pointer', 
-                  padding: '16px 20px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 16,
                   transition: 'transform 0.2s, border-color 0.2s',
                   position: 'relative',
                   overflow: 'hidden'
@@ -166,81 +162,84 @@ export default function Assignments() {
                     width: 4, 
                     height: 32, 
                     borderRadius: 4,
-                    background: isSubmitted ? 'var(--success)' : (s.filterKey === 'overdue' ? 'var(--danger)' : s.filterKey === 'soon' ? 'var(--warning)' : 'var(--accent)')
+                    background: isSubmitted ? 'var(--success)' : (s.filterKey === 'overdue' ? 'var(--danger)' : s.filterKey === 'soon' ? 'var(--warning)' : 'var(--accent)'),
+                    flexShrink: 0
                   }} />
                   
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                  <div className="assign-item-content">
                     <div className="assign-name" style={{ fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 2 }}>{a.name}</div>
                     <div className="assign-course" style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>{a.courseshort || a.coursename}</div>
                   </div>
 
-                  <div className="assign-status" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                    {isIgnored && (
-                      <div style={{ 
-                        background: 'rgba(255,255,255,0.06)', 
-                        color: 'var(--text2)', 
-                        fontSize: 11, 
-                        fontWeight: 700, 
-                        padding: '4px 12px', 
-                        borderRadius: 20, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.02em',
-                        border: '1px solid var(--border)'
-                      }}>
-                        <EyeOff size={12} /> Ignored
-                      </div>
-                    )}
-                    {isSubmitted ? (
-                      <div style={{ 
-                        background: 'rgba(16,185,129,0.1)', 
-                        color: 'var(--success)', 
-                        fontSize: 11, 
-                        fontWeight: 700, 
-                        padding: '4px 12px', 
-                        borderRadius: 20, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.02em'
-                      }}>
-                        <CheckCircle2 size={12} /> Submitted
-                      </div>
-                    ) : (
-                      <div style={{ 
-                        background: 'rgba(239,68,68,0.1)', 
-                        color: 'var(--danger)', 
-                        fontSize: 11, 
-                        fontWeight: 700, 
-                        padding: '4px 12px', 
-                        borderRadius: 20, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: 6,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.02em'
-                      }}>
-                        <Clock size={12} /> Pending
-                      </div>
-                    )}
-                  </div>
+                  <div className="assign-item-right">
+                    <div className="assign-status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {isIgnored && (
+                        <div style={{ 
+                          background: 'rgba(255,255,255,0.06)', 
+                          color: 'var(--text2)', 
+                          fontSize: 11, 
+                          fontWeight: 700, 
+                          padding: '4px 12px', 
+                          borderRadius: 20, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 6,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.02em',
+                          border: '1px solid var(--border)'
+                        }}>
+                          <EyeOff size={12} /> Ignored
+                        </div>
+                      )}
+                      {isSubmitted ? (
+                        <div style={{ 
+                          background: 'rgba(16,185,129,0.1)', 
+                          color: 'var(--success)', 
+                          fontSize: 11, 
+                          fontWeight: 700, 
+                          padding: '4px 12px', 
+                          borderRadius: 20, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 6,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.02em'
+                        }}>
+                          <CheckCircle2 size={12} /> Submitted
+                        </div>
+                      ) : (
+                        <div style={{ 
+                          background: 'rgba(239,68,68,0.1)', 
+                          color: 'var(--danger)', 
+                          fontSize: 11, 
+                          fontWeight: 700, 
+                          padding: '4px 12px', 
+                          borderRadius: 20, 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 6,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.02em'
+                        }}>
+                          <Clock size={12} /> Pending
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="assign-due" style={{ textAlign: 'right', minWidth: 100, flexShrink: 0 }}>
-                    <div className={`due-date ${s.tagCls}`} style={{ 
-                      fontSize: 11, 
-                      fontWeight: 800, 
-                      color: isSubmitted ? 'var(--success)' : (s.tagCls === 'tag-overdue' ? 'var(--danger)' : s.tagCls === 'tag-soon' ? 'var(--warning)' : 'var(--text2)'),
-                      marginBottom: 2
-                    }}>{isSubmitted ? 'DONE' : s.tag}</div>
-                    <div className="due-label" style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                      <Calendar size={10} /> {fmt(a.duedate)}
+                    <div className="assign-due" style={{ textAlign: 'right' }}>
+                      <div className={`due-date ${s.tagCls}`} style={{ 
+                        fontSize: 11, 
+                        fontWeight: 800, 
+                        color: isSubmitted ? 'var(--success)' : (s.tagCls === 'tag-overdue' ? 'var(--danger)' : s.tagCls === 'tag-soon' ? 'var(--warning)' : 'var(--text2)'),
+                        marginBottom: 2
+                      }}>{isSubmitted ? 'DONE' : s.tag}</div>
+                      <div className="due-label" style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                        <Calendar size={10} /> {fmt(a.duedate)}
+                      </div>
                     </div>
                   </div>
                   
-                  <ChevronRight size={16} style={{ color: 'var(--text3)', opacity: 0.5 }} />
+                  <ChevronRight size={16} style={{ color: 'var(--text3)', opacity: 0.5, flexShrink: 0 }} />
                 </div>
               )
             })}

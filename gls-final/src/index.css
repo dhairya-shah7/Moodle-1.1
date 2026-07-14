@@ -712,8 +712,6 @@ body::before {
 
 .assign-item {
   background: var(--surface);
-
-
   border: 1px solid var(--border);
   border-radius: 13px;
   padding: 15px 18px;
@@ -722,6 +720,21 @@ body::before {
   gap: 14px;
   transition: all .2s;
   box-shadow: var(--shadow);
+}
+
+.assign-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assign-item-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
 }
 
 .assign-item:hover {
@@ -1604,8 +1617,24 @@ body.light .login-box {
   }
 
   /* Adjust assignment card details */
+  /* Responsive assignment card fixes on mobile viewports */
+  .assign-item {
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding: 14px 16px !important;
+  }
+
+  .assign-item-right {
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 6px !important;
+  }
+
   .assign-name {
-    font-size: 14px !important;
+    font-size: 14.5px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.3 !important;
   }
 
   .assign-course {
@@ -1613,7 +1642,8 @@ body.light .login-box {
   }
 
   .assign-due {
-    font-size: 12.5px !important;
+    font-size: 11.5px !important;
+    text-align: right !important;
   }
 
   /* Calendar card mobile padding */
