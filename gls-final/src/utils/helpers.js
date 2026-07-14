@@ -47,17 +47,42 @@ export const getViewerUrl = (rawUrl, filename) => {
     return rawUrl
   }
 
-  // Office / PDF — route through Google Docs Viewer
-  if (['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(ext)) {
+  // Office docs — route through Google Docs Viewer (as browser doesn't render natively)
+  if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx'].includes(ext)) {
     return `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(rawUrl)}`
   }
 
-  // Images and video — browser handles natively
-  if (['jpg', 'jpeg', 'png', 'gif', 'mp4', 'webm'].includes(ext)) {
+  // PDFs, images, and video — open with browser's native/default viewer
+  if (['pdf', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'webm'].includes(ext)) {
     return rawUrl
   }
 
   return null // not viewable inline
+}
+
+export const forceDownload = async (url, filename) => {
+  if (!url) return
+  try {
+    const response = await fetch(url)
+    const blob = await response.blob()
+    const blobUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(blobUrl)
+  } catch (error) {
+    // fallback if fetch/CORS fails
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.target = '_blank'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 }
 
 export function sanitizeHtml(html) {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppDataContext'
-import { fileIcon, truncate, getViewerUrl, getFormattedDate } from '../utils/helpers'
+import { fileIcon, truncate, getViewerUrl, getFormattedDate, forceDownload } from '../utils/helpers'
 import Spinner from '../components/Spinner'
 import { 
   FileText, FilePlus, FileSpreadsheet, FilePieChart as FilePPT, 
@@ -49,8 +49,21 @@ function FileCard({ f }) {
   const viewerUrl = isLink ? f.url : getViewerUrl(f.url, f.filename)
   const href = viewerUrl || f.url
 
+  const handleCardClick = () => {
+    window.open(href, '_blank')
+  }
+
+  const handleActionClick = (e) => {
+    e.stopPropagation()
+    if (isLink) {
+      window.open(f.url, '_blank')
+    } else {
+      forceDownload(f.url, f.filename)
+    }
+  }
+
   return (
-    <a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>
+    <div onClick={handleCardClick} style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>
       <div
         className="card-hover"
         style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', cursor: 'pointer', transition: 'all .2s', display: 'flex', flexDirection: 'column', gap: 10, height: '100%', boxSizing: 'border-box' }}
@@ -72,13 +85,17 @@ function FileCard({ f }) {
             {fmtSize(f.filesize) && fmtDate(f.timemodified) && <span>·</span>}
             {fmtDate(f.timemodified) && <span>{fmtDate(f.timemodified)}</span>}
           </div>
-          <div style={{ flexShrink: 0, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div 
+            onClick={handleActionClick}
+            className="row-hover"
+            style={{ flexShrink: 0, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
             {isLink ? <ExternalLink size={12} /> : <Download size={12} />}
             {isLink ? 'Open' : 'Save'}
           </div>
         </div>
       </div>
-    </a>
+    </div>
   )
 }
 
@@ -87,6 +104,15 @@ function FileRow({ f }) {
   const iconType = isLink ? 'link' : fileIcon(f.filename)
   const color = isLink ? 'var(--accent)' : (EXT_COLOR[iconType] || 'var(--text3)')
   const viewerUrl = isLink ? f.url : getViewerUrl(f.url, f.filename)
+
+  const handleActionClick = (e) => {
+    e.preventDefault()
+    if (isLink) {
+      window.open(f.url, '_blank')
+    } else {
+      forceDownload(f.url, f.filename)
+    }
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
@@ -108,7 +134,7 @@ function FileRow({ f }) {
       <span style={{ background: color + '18', color, fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 6, flexShrink: 0 }}>
         {(isLink ? 'LINK' : (f.filename || '').split('.').pop()).toUpperCase().slice(0, 4)}
       </span>
-      <a href={f.url} target="_blank" rel="noreferrer"
+      <a href={f.url} onClick={handleActionClick}
         style={{ padding: '7px 14px', background: 'var(--accent)', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
         {isLink ? <ExternalLink size={14} /> : <Download size={14} />}
         {isLink ? 'Open' : 'Download'}

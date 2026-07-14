@@ -90,15 +90,53 @@ export default function CalendarPage() {
             <div className="cal-month" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
               {calDate.toLocaleDateString('en-IN',{ month:'long', year:'numeric' })}
             </div>
-            <div className="cal-actions" style={{ display: 'flex', gap: 8 }}>
-              <button className="btn-icon" onClick={() => { setCalDate(new Date(y, m-1, 1)); setSelectedDay(null) }}>
-                <ChevronLeft size={20} />
+            <div className="cal-actions" style={{ 
+              display: 'flex', 
+              gap: 4, 
+              background: 'var(--surface2)', 
+              padding: 4, 
+              borderRadius: 12, 
+              border: '1px solid var(--border)',
+              alignItems: 'center'
+            }}>
+              <button 
+                onClick={() => { setCalDate(new Date(y, m-1, 1)); setSelectedDay(null) }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 8, border: 'none',
+                  background: 'transparent', color: 'var(--text)', cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface3)'; e.currentTarget.style.color = 'var(--accent)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text)' }}
+              >
+                <ChevronLeft size={18} />
               </button>
-              <button className="btn-icon" onClick={() => setCalDate(new Date())} style={{ padding: '0 12px', fontSize: 13, fontWeight: 600 }}>
+              <button 
+                onClick={() => setCalDate(new Date())} 
+                style={{ 
+                  padding: '0 14px', height: 32, fontSize: 12, fontWeight: 700,
+                  borderRadius: 8, border: 'none',
+                  background: 'var(--accent)', color: '#fff', cursor: 'pointer',
+                  transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.25)'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent2)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.transform = 'translateY(0)' }}
+              >
                 Today
               </button>
-              <button className="btn-icon" onClick={() => { setCalDate(new Date(y, m+1, 1)); setSelectedDay(null) }}>
-                <ChevronRight size={20} />
+              <button 
+                onClick={() => { setCalDate(new Date(y, m+1, 1)); setSelectedDay(null) }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 8, border: 'none',
+                  background: 'transparent', color: 'var(--text)', cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface3)'; e.currentTarget.style.color = 'var(--accent)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text)' }}
+              >
+                <ChevronRight size={18} />
               </button>
             </div>
           </div>

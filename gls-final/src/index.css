@@ -1553,3 +1553,67 @@ body.light .login-box {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ══════════════════════════════════════════
+   MOBILE & TOUCHSCREEN OVERRIDES (<= 768px)
+   ══════════════════════════════════════════ */
+@media (max-width: 768px) {
+  body {
+    font-size: 15px !important;
+  }
+
+  /* Scale up titles and headers slightly on mobile */
+  .page-title {
+    font-size: 22px !important;
+    font-weight: 800 !important;
+  }
+  
+  .page-sub {
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+  }
+
+  /* Touch-friendly buttons: guarantee minimum size of 42px height for primary actions */
+  button, 
+  .btn,
+  .btn-icon,
+  .bottom-nav__sheet-actions button,
+  .bottom-nav__theme-toggle,
+  .profile-header__btn,
+  .btn-dl {
+    font-size: 13px !important;
+    padding: 10px 16px !important;
+    min-height: 42px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Make file rows more touch-friendly */
+  .files-grid div,
+  .calendar-container div {
+    font-size: 13.5px;
+  }
+
+  /* Input and dropdown touch optimization */
+  input, 
+  select, 
+  textarea {
+    font-size: 14.5px !important;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* Adjust assignment card details */
+  .assign-name {
+    font-size: 14px !important;
+  }
+
+  .assign-course {
+    font-size: 12px !important;
+  }
+
+  .assign-due {
+    font-size: 12.5px !important;
+  }
+}

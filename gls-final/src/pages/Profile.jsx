@@ -3,14 +3,18 @@ import { useAuth } from '../context/AuthContext'
 import { useMoodle } from '../hooks/useMoodle'
 import Spinner from '../components/Spinner'
 import { Edit, ExternalLink, Key, Settings, Award, Info } from 'lucide-react'
+import { useTheme } from '../hooks/useTheme'
 
 const MOODLE = 'https://btech.glsmoodle.in'
 
 export default function Profile() {
   const { user, token } = useAuth()
   const moodle = useMoodle()
+  const { isDark } = useTheme()
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
+
+  const grayColor = isDark ? 'var(--text2)' : 'var(--text3)'
 
   useEffect(() => {
     if (!user?.userid) return
@@ -30,14 +34,14 @@ export default function Profile() {
   )
 
   const sectionTitle = (t) => (
-    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: grayColor, marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
       {t}
     </div>
   )
 
   const row = (label, value) => value ? (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: grayColor, marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 500 }}>{value}</div>
     </div>
   ) : null
@@ -70,7 +74,7 @@ export default function Profile() {
           <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
             {user?.username} {user?.fullname || user?.lastname}
           </div>
-          <div style={{ fontSize: 13, color: 'var(--text3)' }}>GLS University · Ahmedabad</div>
+          <div style={{ fontSize: 13, color: grayColor }}>GLS University · Ahmedabad</div>
         </div>
         <a
           href={`${MOODLE}/user/edit.php?id=${user?.userid}`}
@@ -113,7 +117,7 @@ export default function Profile() {
           {sectionTitle('Login Activity')}
           {user?.firstaccess && (
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 3 }}>First access to site</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: grayColor, marginBottom: 3 }}>First access to site</div>
               <div style={{ fontSize: 14, color: 'var(--text)' }}>
                 {new Date(user.firstaccess * 1000).toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short' })}
               </div>
@@ -121,7 +125,7 @@ export default function Profile() {
           )}
           {user?.lastaccess && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', marginBottom: 3 }}>Last access to site</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: grayColor, marginBottom: 3 }}>Last access to site</div>
               <div style={{ fontSize: 14, color: 'var(--text)' }}>
                 {new Date(user.lastaccess * 1000).toLocaleString('en-IN', { dateStyle: 'full', timeStyle: 'short' })}
               </div>
@@ -174,7 +178,7 @@ export default function Profile() {
               </a>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 14, padding: '10px 14px', background: 'rgba(59,130,246,0.06)', borderRadius: 10, fontSize: 12, color: 'var(--text3)', border: '1px solid rgba(59,130,246,0.1)' }}>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14, padding: '10px 14px', background: 'rgba(59,130,246,0.06)', borderRadius: 10, fontSize: 12, color: grayColor, border: '1px solid rgba(59,130,246,0.1)' }}>
             <Info size={14} style={{ flexShrink: 0, color: 'var(--accent)' }} />
             <span>Profile changes like name, password, and preferences are saved directly on Moodle.</span>
           </div>

@@ -89,30 +89,85 @@ function DinoGame({ user }) {
   const [score, setScore] = useState(0)
   const [highScore, setHighScore] = useState(0)
 
+  const [leaderboard, setLeaderboard] = useState([])
+
+  const updateLeaderboard = (username, newScore) => {
+    if (!username) return
+    try {
+      const currentRaw = localStorage.getItem('moodle_dino_leaderboard')
+      let currentList = []
+      if (currentRaw) {
+        currentList = JSON.parse(currentRaw)
+      } else {
+        currentList = [
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 }
+        ]
+      }
+
+      // Check if user already exists
+      const existingIdx = currentList.findIndex(x => x.name === username)
+      if (existingIdx !== -1) {
+        if (newScore > currentList[existingIdx].score) {
+          currentList[existingIdx].score = newScore
+        }
+      } else {
+        // If there's an empty slot, overwrite it; otherwise add to list
+        const emptyIdx = currentList.findIndex(x => x.name === '—')
+        if (emptyIdx !== -1) {
+          currentList[emptyIdx] = { name: username, score: newScore }
+        } else {
+          currentList.push({ name: username, score: newScore })
+        }
+      }
+
+      // Sort and slice to top 5
+      currentList.sort((a, b) => b.score - a.score)
+      const top5 = currentList.slice(0, 5)
+
+      localStorage.setItem('moodle_dino_leaderboard', JSON.stringify(top5))
+      setLeaderboard(top5)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('moodle_dino_leaderboard')
+      if (saved) {
+        setLeaderboard(JSON.parse(saved))
+      } else {
+        const initial = [
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 },
+          { name: '—', score: 0 }
+        ]
+        localStorage.setItem('moodle_dino_leaderboard', JSON.stringify(initial))
+        setLeaderboard(initial)
+      }
+    } catch (e) {
+      setLeaderboard([])
+    }
+  }, [])
+
   useEffect(() => {
     try {
       const key = user?.username ? `moodle_dino_high_score_${user.username}` : 'moodle_dino_high_score'
       const saved = parseInt(localStorage.getItem(key) || localStorage.getItem('moodle_dino_high_score') || '0')
       setHighScore(saved)
+      if (user?.username && saved > 0) {
+        updateLeaderboard(user.username, saved)
+      }
     } catch (e) {
       setHighScore(0)
     }
   }, [user?.username])
-
-  // Leaderboard data
-  const basePlayers = [
-    { name: '—', score: 0 },
-    { name: '—', score: 0 },
-    { name: '—', score: 0 },
-    { name: '—', score: 0 }
-  ]
-
-  const getLeaderboard = () => {
-    const list = [...basePlayers, { name: user?.username || 'You', score: highScore, isUser: true }]
-    return list.sort((a, b) => b.score - a.score).slice(0, 5)
-  }
-
-  const leaderboard = getLeaderboard()
 
   const SPRITE_SIZE = 5
   const GROUND = 170
@@ -308,6 +363,9 @@ function DinoGame({ user }) {
               const key = user?.username ? `moodle_dino_high_score_${user.username}` : 'moodle_dino_high_score'
               try {
                 localStorage.setItem(key, String(next))
+                if (user?.username) {
+                  updateLeaderboard(user.username, next)
+                }
               } catch (e) {}
               return next
             })
@@ -435,8 +493,8 @@ function DinoGame({ user }) {
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 fontSize: 12, 
-                color: player.isUser ? 'var(--accent)' : 'var(--text2)',
-                fontWeight: player.isUser ? 700 : 500
+                color: player.name === user?.username ? 'var(--accent)' : 'var(--text2)',
+                fontWeight: player.name === user?.username ? 700 : 500
               }}
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>

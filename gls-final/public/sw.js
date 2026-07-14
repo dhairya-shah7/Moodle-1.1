@@ -10,7 +10,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   const data = event.data ? event.data.json() : {}
   event.waitUntil(
-    self.registration.showNotification(data.title || 'GLS Moodle', {
+    self.registration.showNotification(data.title || 'Moodle 1.1', {
       body: data.body || 'New update available!',
       icon: '/logo192.png',
       badge: '/logo192.png'

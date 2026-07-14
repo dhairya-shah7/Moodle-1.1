@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useMoodle } from '../hooks/useMoodle'
 import { useAppData } from '../context/AppDataContext'
-import { fmt, daysLeft, assignStatus, getViewerUrl, sanitizeHtml } from '../utils/helpers'
+import { fmt, daysLeft, assignStatus, getViewerUrl, sanitizeHtml, forceDownload } from '../utils/helpers'
 import toast from 'react-hot-toast'
 
 const MAX_SIZE = 2 * 1024 * 1024
@@ -246,12 +246,25 @@ export default function AssignmentModal({ assignment, onClose }) {
   return createPortal(
     <div
       onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 100000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', padding: '40px 16px' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 100000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '24px 16px' }}
     >
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, width: '100%', maxWidth: 680, padding: 32, position: 'relative', margin: 'auto' }}>
+      <div style={{ 
+        background: 'var(--surface)', 
+        border: '1px solid var(--border)', 
+        borderRadius: 18, 
+        width: '100%', 
+        maxWidth: 680, 
+        maxHeight: 'calc(100vh - 48px)',
+        padding: '32px 32px 24px', 
+        position: 'relative', 
+        margin: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        boxSizing: 'border-box'
+      }}>
 
         {/* Close btn */}
-        <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--text2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
           <X size={18} />
         </button>
 
@@ -259,6 +272,8 @@ export default function AssignmentModal({ assignment, onClose }) {
         <div style={{ fontFamily: 'DM Sans,sans-serif', fontWeight: 800, fontSize: 20, marginBottom: 4, paddingRight: 40 }}>{assignment.name}</div>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 20 }}>{assignment.courseshort} — {assignment.coursename}</div>
 
+        {/* Scrolling Content Container */}
+        <div style={{ overflowY: 'auto', flex: 1, paddingRight: 8, marginRight: -8, marginBottom: 8 }}>
         {/* Status table */}
         <div style={{ background: 'var(--surface2)', borderRadius: 12, overflow: 'hidden', marginBottom: 24, border: '1px solid var(--border)' }}>
           {[
@@ -314,7 +329,13 @@ export default function AssignmentModal({ assignment, onClose }) {
                     )}
                     {f.filesize > 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{(f.filesize / 1024).toFixed(0)} KB</div>}
                   </div>
-                  <a href={downloadUrl} download target="_blank" rel="noreferrer" className="btn-dl">Download</a>
+                  <a 
+                    href={downloadUrl} 
+                    onClick={(e) => { e.preventDefault(); forceDownload(downloadUrl, f.filename) }}
+                    className="btn-dl"
+                  >
+                    Download
+                  </a>
                 </div>
               )
             })}
@@ -527,8 +548,10 @@ export default function AssignmentModal({ assignment, onClose }) {
           </div>
         )}
 
-        {/* Scroll spacer */}
-        <div style={{ height: 24 }} />
+        </div> {/* Close Scrolling Container */}
+        
+        {/* Scroll spacer / bottom margin to clear mobile/PWA bottom navs */}
+        <div style={{ height: 12 }} />
       </div>
     </div >,
     document.body

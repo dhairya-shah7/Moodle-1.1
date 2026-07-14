@@ -148,11 +148,11 @@ export function AppDataProvider({ children }) {
           const d = daysLeft(assign.duedate)
           if (d === 0) {
             toast.error(`🚨 Due Today: ${assign.name}`, { duration: 8000 })
-            sendDeviceNotification('GLS Moodle - Deadline Alert', `🚨 Due Today: ${assign.name}`)
+            sendDeviceNotification('Moodle 1.1 - Deadline Alert', `🚨 Due Today: ${assign.name}`)
             toastedIds.current.add(assign.id)
           } else if (d === 1) {
             toast(`⏰ Due Tomorrow: ${assign.name}`, { duration: 6000 })
-            sendDeviceNotification('GLS Moodle - Deadline Alert', `⏰ Due Tomorrow: ${assign.name}`)
+            sendDeviceNotification('Moodle 1.1 - Deadline Alert', `⏰ Due Tomorrow: ${assign.name}`)
             toastedIds.current.add(assign.id)
           }
         })
@@ -205,7 +205,7 @@ export function AppDataProvider({ children }) {
         if (mergedFiles.length > prevFileCount.current) {
           const msg = '📁 New file uploaded by faculty!'
           toast(msg, { icon: '📁', duration: 6000 })
-          sendDeviceNotification('GLS Moodle - File Uploaded', msg)
+          sendDeviceNotification('Moodle 1.1 - File Uploaded', msg)
         }
         prevFileCount.current = mergedFiles.length
         setFiles(mergedFiles)
@@ -216,7 +216,7 @@ export function AppDataProvider({ children }) {
           newOnes.forEach(assign => {
             const msg = `📋 New assignment posted: ${assign.name}`
             toast(msg, { duration: 8000, icon: '📋' })
-            sendDeviceNotification('GLS Moodle - New Assignment', msg)
+            sendDeviceNotification('Moodle 1.1 - New Assignment', msg)
           })
           setAssignments(a)
           if (role === 'student') await loadSubmissions(a)

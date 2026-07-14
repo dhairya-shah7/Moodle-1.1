@@ -252,12 +252,12 @@ export default function Sidebar({ badges = {} }) {
                 if (permission === 'granted') {
                   if ('serviceWorker' in navigator) {
                     const reg = await navigator.serviceWorker.ready
-                    reg.showNotification('GLS Moodle', {
+                    reg.showNotification('Moodle 1.1', {
                       body: 'Device notifications successfully enabled!',
                       icon: '/logo192.png'
                     })
                   } else {
-                    new Notification('GLS Moodle', {
+                    new Notification('Moodle 1.1', {
                       body: 'Device notifications successfully enabled!',
                       icon: '/logo192.png'
                     })
