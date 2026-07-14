@@ -1380,7 +1380,7 @@ body.light .login-box {
     grid-template-columns: 1fr !important;
   }
 
-  .calendar-container > div:last-child {
+  .calendar-container>div:last-child {
     margin-top: 16px;
   }
 
@@ -1439,7 +1439,7 @@ body.light .login-box {
     grid-template-columns: 1fr !important;
   }
 
-  .calendar-container > div:last-child {
+  .calendar-container>div:last-child {
     margin-top: 20px;
   }
 }
@@ -1498,17 +1498,17 @@ body.light .login-box {
     padding: 24px 16px;
     gap: 16px;
   }
-  
+
   .profile-header__btn {
     width: 100%;
     justify-content: center;
   }
-  
+
   .profile-grid {
     grid-template-columns: 1fr;
     gap: 16px;
   }
-  
+
   .profile-courses-cols {
     column-count: 1;
   }
@@ -1580,7 +1580,7 @@ body.light .login-box {
     font-size: 22px !important;
     font-weight: 800 !important;
   }
-  
+
   .page-sub {
     font-size: 13px !important;
     line-height: 1.4 !important;
@@ -1608,8 +1608,8 @@ body.light .login-box {
   }
 
   /* Input and dropdown touch optimization */
-  input, 
-  select, 
+  input,
+  select,
   textarea {
     font-size: 14.5px !important;
     min-height: 44px !important;
@@ -1648,7 +1648,7 @@ body.light .login-box {
 
   /* Calendar card mobile padding */
   .calendar-card {
-    padding: 16px !important;
+    padding: 18px !important;
   }
 }
 
