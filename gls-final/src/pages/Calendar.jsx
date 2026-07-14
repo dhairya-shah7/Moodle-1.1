@@ -85,8 +85,8 @@ export default function CalendarPage() {
       <div className="calendar-container">
 
         {/* Calendar grid */}
-        <div className="card calendar-card" style={{ padding: 20 }}>
-          <div className="cal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div className="card calendar-card">
+          <div className="cal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
             <div className="cal-month" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
               {calDate.toLocaleDateString('en-IN',{ month:'long', year:'numeric' })}
             </div>
@@ -97,7 +97,8 @@ export default function CalendarPage() {
               padding: 4, 
               borderRadius: 12, 
               border: '1px solid var(--border)',
-              alignItems: 'center'
+              alignItems: 'center',
+              flexShrink: 0
             }}>
               <button 
                 onClick={() => { setCalDate(new Date(y, m-1, 1)); setSelectedDay(null) }}
@@ -105,12 +106,12 @@ export default function CalendarPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: 32, height: 32, borderRadius: 8, border: 'none',
                   background: 'transparent', color: 'var(--text)', cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s', flexShrink: 0
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface3)'; e.currentTarget.style.color = 'var(--accent)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text)' }}
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={18} style={{ flexShrink: 0 }} />
               </button>
               <button 
                 onClick={() => setCalDate(new Date())} 
@@ -118,7 +119,8 @@ export default function CalendarPage() {
                   padding: '0 14px', height: 32, fontSize: 12, fontWeight: 700,
                   borderRadius: 8, border: 'none',
                   background: 'var(--accent)', color: '#fff', cursor: 'pointer',
-                  transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.25)'
+                  transition: 'all 0.2s', boxShadow: '0 2px 8px rgba(99,102,241,0.25)',
+                  flexShrink: 0
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--accent2)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.transform = 'translateY(0)' }}
@@ -131,12 +133,12 @@ export default function CalendarPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: 32, height: 32, borderRadius: 8, border: 'none',
                   background: 'transparent', color: 'var(--text)', cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s', flexShrink: 0
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface3)'; e.currentTarget.style.color = 'var(--accent)' }}
                 onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text)' }}
               >
-                <ChevronRight size={18} />
+                <ChevronRight size={18} style={{ flexShrink: 0 }} />
               </button>
             </div>
           </div>

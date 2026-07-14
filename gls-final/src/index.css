@@ -816,7 +816,7 @@ body::before {
   }
 
   .bottom-nav__items {
-    grid-auto-columns: minmax(74px, 1fr);
+    grid-auto-columns: minmax(0, 1fr);
     padding: 10px;
     gap: 6px;
   }
@@ -1615,4 +1615,14 @@ body.light .login-box {
   .assign-due {
     font-size: 12.5px !important;
   }
+
+  /* Calendar card mobile padding */
+  .calendar-card {
+    padding: 12px !important;
+  }
+}
+
+/* Base calendar-card layout styling */
+.calendar-card {
+  padding: 20px;
 }
