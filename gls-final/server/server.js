@@ -5,6 +5,8 @@ const multer = require('multer')
 const FormData = require('form-data')
 const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
+const path = require('path')
+const fs = require('fs')
 
 const app = express()
 const MOODLE = 'https://btech.glsmoodle.in'
@@ -305,8 +307,6 @@ app.get('/proxy/debug', (req, res) => {
 })
 
 // ── Global Dino Game Leaderboard Endpoints
-const fs = require('fs')
-const path = require('path')
 const leaderboardFilePath = path.join(__dirname, 'leaderboard.json')
 
 let inMemoryLeaderboard = [
@@ -375,8 +375,6 @@ app.post('/proxy/dino/score', (req, res) => {
 app.all('/proxy/*', (req, res) => {
   res.status(404).json({ error: 'Unknown endpoint' })
 })
-
-const path = require('path')
 
 // Serve built React frontend
 app.use(express.static(path.join(__dirname, '../dist')))
