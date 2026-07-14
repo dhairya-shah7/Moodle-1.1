@@ -146,11 +146,11 @@ export default function CalendarPage() {
           <div className="cal-grid" style={{ 
             display: 'grid', 
             gridTemplateColumns: 'repeat(7, 1fr)', 
-            gap: 1, 
+            gap: 2, 
             background: 'var(--border)', 
             borderRadius: 12, 
             overflow: 'hidden',
-            border: '1px solid var(--border)'
+            border: '2px solid var(--border)'
           }}>
             {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
               <div key={d} className="cal-day-name" style={{ 

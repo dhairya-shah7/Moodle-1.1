@@ -1648,11 +1648,11 @@ body.light .login-box {
 
   /* Calendar card mobile padding */
   .calendar-card {
-    padding: 12px !important;
+    padding: 16px !important;
   }
 }
 
 /* Base calendar-card layout styling */
 .calendar-card {
-  padding: 20px;
+  padding: 24px;
 }
