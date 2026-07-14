@@ -6,6 +6,82 @@ import AssignmentItem from '../components/AssignmentItem'
 import Spinner from '../components/Spinner'
 import { useNavigate } from 'react-router-dom'
 
+const dinoRun = [
+  [
+    "00011110",
+    "00111111",
+    "00111100",
+    "01111100",
+    "11111111",
+    "00101100",
+    "00101100",
+    "01100110"
+  ],
+  [
+    "00011110",
+    "00111111",
+    "00111100",
+    "01111100",
+    "11111111",
+    "00110010",
+    "00110010",
+    "01100011"
+  ]
+]
+
+const dinoDuck = [
+  "0001111000",
+  "0011111100",
+  "1111111111",
+  "1111111111",
+  "0011000000"
+]
+
+const cactusSmall = [
+  "010",
+  "010",
+  "111",
+  "010",
+  "010",
+  "010"
+]
+
+const cactusBig = [
+  "01010",
+  "01010",
+  "11111",
+  "01010",
+  "01010",
+  "01010",
+  "01010"
+]
+
+const birdFrames = [
+  [
+    "01000010",
+    "10111101",
+    "01111110",
+    "00111100"
+  ],
+  [
+    "00000000",
+    "01111110",
+    "11111111",
+    "00111100"
+  ]
+]
+
+function drawPixels(ctx, map, px, py, size, color) {
+  ctx.fillStyle = color
+  for (let r = 0; r < map.length; r++) {
+    for (let cIdx = 0; cIdx < map[r].length; cIdx++) {
+      if (map[r][cIdx] === '1') {
+        ctx.fillRect(px + cIdx * size, py + r * size, size, size)
+      }
+    }
+  }
+}
+
 function DinoGame({ user }) {
   const canvasRef = useRef(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -21,233 +97,265 @@ function DinoGame({ user }) {
 
   // Leaderboard data
   const basePlayers = [
-    { name: 'Yash Patel', score: 980 },
-    { name: 'Dev Shah', score: 750 },
-    { name: 'Priyansh', score: 420 },
-    { name: 'Riya', score: 210 }
+    { name: '—', score: 0 },
+    { name: '—', score: 0 },
+    { name: '—', score: 0 },
+    { name: '—', score: 0 }
   ]
 
   const getLeaderboard = () => {
-    const list = [...basePlayers, { name: user?.fullname || 'You', score: highScore, isUser: true }]
+    const list = [...basePlayers, { name: user?.username || 'You', score: highScore, isUser: true }]
     return list.sort((a, b) => b.score - a.score).slice(0, 5)
   }
 
   const leaderboard = getLeaderboard()
 
+  const SPRITE_SIZE = 5
+  const GROUND = 170
+  const DINO_H = 8 * SPRITE_SIZE
+  const DINO_W = 8 * SPRITE_SIZE
+  const DUCK_H = 5 * SPRITE_SIZE
+  const DUCK_W = 10 * SPRITE_SIZE
+
   // Game ref variables to avoid state-refresh delays in loop
   const gameRef = useRef({
-    dinoY: 0,
-    dinoVy: 0,
-    obstacles: [],
-    frame: 0,
-    speed: 5,
+    dino: { y: GROUND - DINO_H, vy: 0, jump: false, duck: false, frame: 0, legTimer: 0 },
+    obs: [],
+    speed: 6,
     score: 0,
-    isPlaying: false
+    over: false,
+    frame: 0,
+    started: false,
+    nextSpawn: 60
   })
 
-  useEffect(() => {
-    gameRef.current.isPlaying = isPlaying
-  }, [isPlaying])
+  const triggerJump = () => {
+    const state = gameRef.current
+    if (state.over) {
+      // reset
+      state.dino = { y: GROUND - DINO_H, vy: 0, jump: false, duck: false, frame: 0, legTimer: 0 }
+      state.obs = []
+      state.speed = 6
+      state.score = 0
+      state.over = false
+      state.frame = 0
+      state.started = true
+      state.nextSpawn = 60
+      setScore(0)
+      setGameOver(false)
+      setIsPlaying(true)
+      return
+    }
+    if (!state.started) {
+      state.started = true
+      setIsPlaying(true)
+    }
+    if (!state.dino.jump && !state.dino.duck) {
+      state.dino.vy = -12
+      state.dino.jump = true
+    }
+  }
 
-  // Key jump handler
+  const triggerDuck = (v) => {
+    const state = gameRef.current
+    if (state.started && !state.over && !state.dino.jump) {
+      state.dino.duck = v
+    }
+  }
+
+  // Key handlers
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         e.preventDefault()
         triggerJump()
       }
+      if (e.code === 'ArrowDown') {
+        e.preventDefault()
+        triggerDuck(true)
+      }
+    }
+    const handleKeyUp = (e) => {
+      if (e.code === 'ArrowDown') {
+        triggerDuck(false)
+      }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isPlaying, gameOver])
-
-  const triggerJump = () => {
-    if (gameOver) {
-      restartGame()
-      return
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
     }
-    if (!isPlaying) {
-      setIsPlaying(true)
-      return
-    }
-    const state = gameRef.current
-    if (state.dinoY === 0) {
-      state.dinoVy = -11 // Jump impulse
-    }
-  }
+  }, [])
 
-  const restartGame = () => {
-    const state = gameRef.current
-    state.dinoY = 0
-    state.dinoVy = 0
-    state.obstacles = []
-    state.frame = 0
-    state.speed = 5
-    state.score = 0
-    setScore(0)
-    setGameOver(false)
-    setIsPlaying(true)
-  }
-
-  // Loop
+  // Game loop
   useEffect(() => {
     let animationId
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
+    ctx.imageSmoothingEnabled = false
 
     const loop = () => {
       const state = gameRef.current
-      
-      // Update sizes dynamically matching the parent element width
-      const width = canvas.width = canvas.parentElement.clientWidth || 300
-      const height = canvas.height = 130
-      
-      // Clear
+      const width = 600
+      const height = 200
+
       ctx.clearRect(0, 0, width, height)
 
+      // Fetch dynamic colors from the computed style
+      const colorText = getComputedStyle(canvas).getPropertyValue('--text').trim() || '#fafafa'
+      const colorText3 = getComputedStyle(canvas).getPropertyValue('--text3').trim() || '#52525b'
+      const colorBorder2 = getComputedStyle(canvas).getPropertyValue('--border2').trim() || '#444b5a'
+      const colorAccent = getComputedStyle(canvas).getPropertyValue('--accent').trim() || '#6366f1'
+      const colorSuccess = getComputedStyle(canvas).getPropertyValue('--success').trim() || '#10b981'
+
       // Draw Ground
-      ctx.strokeStyle = '#444b5a'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.moveTo(0, height - 15)
-      ctx.lineTo(width, height - 15)
-      ctx.stroke()
+      ctx.fillStyle = colorBorder2
+      ctx.fillRect(0, GROUND, width, 2)
 
-      if (state.isPlaying && !gameOver) {
+      // Draw Ground Dashes
+      ctx.fillStyle = colorText3
+      for (let i = 0; i < width; i += 20) {
+        ctx.fillRect((i - (state.frame * state.speed) % 20 + width) % width, GROUND + 4, 8, 2)
+      }
+
+      if (state.started && !state.over) {
         state.frame++
-        // Score based on frames
-        if (state.frame % 5 === 0) {
-          state.score++
-          setScore(state.score)
-        }
-
-        // Increase speed slowly
-        if (state.frame % 300 === 0) {
-          state.speed += 0.5
-        }
-
-        // Apply physics
-        state.dinoY += state.dinoVy
-        state.dinoVy += 0.65 // Gravity
-        if (state.dinoY > 0) {
-          state.dinoY = 0
-          state.dinoVy = 0
+        state.speed += 0.0025
+        state.dino.vy += 0.8
+        state.dino.y += state.dino.vy
+        if (state.dino.y > GROUND - DINO_H) {
+          state.dino.y = GROUND - DINO_H
+          state.dino.vy = 0
+          state.dino.jump = false
         }
 
         // Spawn obstacles
-        const lastObstacle = state.obstacles[state.obstacles.length - 1]
-        if (!lastObstacle || (width - lastObstacle.x > 200 + Math.random() * 150)) {
-          if (Math.random() < 0.02) {
-            state.obstacles.push({
-              x: width,
-              width: 15 + Math.random() * 10,
-              height: 20 + Math.random() * 15
+        state.nextSpawn--
+        if (state.nextSpawn <= 0) {
+          const r = Math.random()
+          if (r < 0.25 && state.score > 150) {
+            const heights = [GROUND - 25, GROUND - 50, GROUND - 75]
+            state.obs.push({
+              type: 'bird',
+              x: 610,
+              y: heights[Math.floor(Math.random() * heights.length)],
+              w: 8 * SPRITE_SIZE,
+              h: 4 * SPRITE_SIZE,
+              count: 1
+            })
+          } else if (r < 0.6) {
+            const count = Math.random() < 0.4 ? 1 : (Math.random() < 0.75 ? 2 : 3)
+            state.obs.push({
+              type: 'small',
+              x: 610,
+              w: count * 3 * SPRITE_SIZE,
+              h: 6 * SPRITE_SIZE,
+              count: count
+            })
+          } else {
+            const count = Math.random() < 0.5 ? 1 : (Math.random() < 0.8 ? 2 : 3)
+            state.obs.push({
+              type: 'big',
+              x: 610,
+              w: count * 5 * SPRITE_SIZE,
+              h: 7 * SPRITE_SIZE,
+              count: count
             })
           }
+          state.nextSpawn = Math.floor(50 + Math.random() * 60 - Math.min(state.speed * 2, 35))
+          if (state.nextSpawn < 25) state.nextSpawn = 25
         }
 
-        // Move obstacles and check collisions
-        state.obstacles = state.obstacles.filter(obs => {
-          obs.x -= state.speed
-          
-          // Collision check
-          const dinoX = 30
-          const dinoW = 20
-          const dinoH = 26
-          const dinoBottom = height - 15 - state.dinoY
-          const dinoTop = dinoBottom - dinoH
+        // Move obstacles
+        state.obs.forEach(o => o.x -= state.speed)
+        state.obs = state.obs.filter(o => o.x > -30)
 
-          const obsX = obs.x
-          const obsW = obs.width
-          const obsH = obs.height
-          const obsBottom = height - 15
-          const obsTop = obsBottom - obsH
+        // Update score
+        state.score += 0.15
+        setScore(Math.floor(state.score))
 
-          const collides = (
-            dinoX < obsX + obsW &&
-            dinoX + dinoW > obsX &&
-            dinoTop < obsBottom &&
-            dinoBottom > obsTop
-          )
+        // Leg walk animation timing
+        state.dino.legTimer++
+        if (state.dino.legTimer > 6) {
+          state.dino.legTimer = 0
+          state.dino.frame = 1 - state.dino.frame
+        }
 
-          if (collides) {
+        // Collision detection
+        const dx1 = 44
+        const dx2 = 44 + (state.dino.duck ? DUCK_W : DINO_W)
+        const dyTop = state.dino.duck ? GROUND - DUCK_H : state.dino.y
+        const dyBot = state.dino.duck ? GROUND : state.dino.y + DINO_H
+
+        state.obs.forEach(o => {
+          const ox1 = o.x
+          const ox2 = o.x + o.w
+          const oyTop = o.type === 'bird' ? o.y : GROUND - o.h
+          const oyBot = o.type === 'bird' ? o.y + o.h : GROUND
+
+          if (dx2 > ox1 && dx1 < ox2 && dyBot > oyTop && dyTop < oyBot) {
+            state.over = true
             setGameOver(true)
             setIsPlaying(false)
             setHighScore(prev => {
-              const next = Math.max(prev, state.score)
+              const next = Math.max(prev, Math.floor(state.score))
               localStorage.setItem('moodle_dino_high_score', String(next))
               return next
             })
           }
-
-          return obs.x + obs.width > 0
         })
       }
 
-      // Draw Dino (Pixel Dino Shape)
-      const dinoX = 30
-      const dinoW = 20
-      const dinoH = 26
-      const dinoBottom = height - 15 - state.dinoY
-      const dinoTop = dinoBottom - dinoH
-
-      ctx.fillStyle = '#6366f1' // var(--accent)
-      // Draw body
-      ctx.fillRect(dinoX, dinoTop + 6, dinoW - 4, dinoH - 8)
-      // Draw head
-      ctx.fillRect(dinoX + 6, dinoTop, 10, 8)
-      // Draw snout
-      ctx.fillRect(dinoX + 12, dinoTop + 2, 6, 4)
-      // Draw tail
-      ctx.fillRect(dinoX - 4, dinoTop + 8, 4, 8)
-      // Draw legs
-      const walk = Math.floor(state.frame / 6) % 2
-      if (state.dinoY < 0) {
-        // jumping legs
-        ctx.fillRect(dinoX + 2, dinoBottom - 2, 4, 3)
-        ctx.fillRect(dinoX + 10, dinoBottom - 2, 4, 3)
+      // Draw Dino
+      if (state.dino.duck && !state.dino.jump) {
+        drawPixels(ctx, dinoDuck, 44 - (DUCK_W - DINO_W) / 2, GROUND - DUCK_H, SPRITE_SIZE, colorAccent)
       } else {
-        ctx.fillRect(dinoX + 2, dinoBottom - 2, 4, walk === 0 ? 3 : 1)
-        ctx.fillRect(dinoX + 10, dinoBottom - 2, 4, walk === 1 ? 3 : 1)
+        drawPixels(ctx, dinoRun[state.dino.jump ? 0 : state.dino.frame], 44, state.dino.y, SPRITE_SIZE, colorAccent)
       }
 
-      // Draw Obstacles (Cacti/Books)
-      ctx.fillStyle = '#f59e0b' // var(--warning)
-      state.obstacles.forEach(obs => {
-        const obsBottom = height - 15
-        const obsTop = obsBottom - obs.height
-        // Draw main stem
-        ctx.fillRect(obs.x, obsTop, obs.width, obs.height)
-        // Draw left arm
-        ctx.fillRect(obs.x - 4, obsTop + 6, 4, obs.height - 12)
-        ctx.fillRect(obs.x - 4, obsTop + 6, obs.width + 4, 4)
-        // Draw right arm
-        ctx.fillRect(obs.x + obs.width, obsTop + 8, 4, obs.height - 14)
-        ctx.fillRect(obs.x, obsTop + 8, obs.width + 4, 4)
+      // Draw Obstacles
+      state.obs.forEach(o => {
+        if (o.type === 'bird') {
+          const f = Math.floor(state.frame / 10) % 2
+          drawPixels(ctx, birdFrames[f], o.x, o.y, SPRITE_SIZE, colorSuccess)
+        } else if (o.type === 'small') {
+          for (let i = 0; i < o.count; i++) {
+            drawPixels(ctx, cactusSmall, o.x + i * 3 * SPRITE_SIZE, GROUND - o.h, SPRITE_SIZE, colorSuccess)
+          }
+        } else {
+          for (let i = 0; i < o.count; i++) {
+            drawPixels(ctx, cactusBig, o.x + i * 5 * SPRITE_SIZE, GROUND - o.h, SPRITE_SIZE, colorSuccess)
+          }
+        }
       })
 
-      // If game is idle, draw overlay
-      if (!state.isPlaying && !gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.45)'
-        ctx.fillRect(0, 0, width, height)
-        ctx.fillStyle = '#fff'
-        ctx.font = 'bold 12px Inter,sans-serif'
+      // Score drawn inside canvas
+      ctx.fillStyle = colorText
+      ctx.font = '16px monospace'
+      ctx.textAlign = 'right'
+      ctx.fillText('Score: ' + Math.floor(state.score), 580, 25)
+
+      // Start Screen
+      if (!state.started) {
+        ctx.fillStyle = colorText
+        ctx.font = '18px monospace'
         ctx.textAlign = 'center'
-        ctx.fillText('Press SPACE or CLICK to Start Game', width / 2, height / 2)
+        ctx.fillText('Tap / Space to start', width / 2, height / 2)
       }
 
-      // If game over, draw game over screen
-      if (gameOver) {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)'
+      // Game Over Screen
+      if (state.over) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
         ctx.fillRect(0, 0, width, height)
-        ctx.fillStyle = '#ef4444' // var(--danger)
-        ctx.font = 'bold 16px Space Grotesk,sans-serif'
+        ctx.fillStyle = '#ef4444'
+        ctx.font = 'bold 20px monospace'
         ctx.textAlign = 'center'
         ctx.fillText('GAME OVER', width / 2, height / 2 - 10)
-        ctx.fillStyle = '#fff'
-        ctx.font = '11px Inter,sans-serif'
-        ctx.fillText(`Score: ${state.score}  |  Press Space or Click to Restart`, width / 2, height / 2 + 15)
+        ctx.fillStyle = colorText
+        ctx.font = '14px monospace'
+        ctx.fillText('Tap / Space to restart', width / 2, height / 2 + 15)
       }
 
       animationId = requestAnimationFrame(loop)
@@ -256,7 +364,7 @@ function DinoGame({ user }) {
     loop()
 
     return () => cancelAnimationFrame(animationId)
-  }, [isPlaying, gameOver])
+  }, [])
 
   const getMedal = (index) => {
     if (index === 0) return '🥇 '
@@ -271,10 +379,6 @@ function DinoGame({ user }) {
       <div 
         onClick={triggerJump} 
         style={{ 
-          background: 'var(--surface2)', 
-          border: '1px solid var(--border)', 
-          borderRadius: 14, 
-          overflow: 'hidden', 
           position: 'relative', 
           cursor: 'pointer',
           display: 'flex',
@@ -282,8 +386,28 @@ function DinoGame({ user }) {
           justifyContent: 'space-between'
         }}
       >
-        <canvas ref={canvasRef} style={{ display: 'block', width: '100%' }} />
-        <div style={{ padding: '8px 12px', display: 'flex', justifyContent: 'space-between', fontSize: 11, borderTop: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text2)' }}>
+        <canvas 
+          ref={canvasRef} 
+          width={600} 
+          height={200} 
+          style={{ 
+            display: 'block', 
+            width: '100%', 
+            height: 'auto',
+            imageRendering: 'pixelated'
+          }} 
+        />
+        <div style={{ 
+          padding: '10px 14px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          fontSize: 12, 
+          border: '1px solid var(--border)', 
+          borderRadius: 12, 
+          background: 'var(--surface2)', 
+          color: 'var(--text)',
+          marginTop: 12
+        }}>
           <span>Score: <strong>{score}</strong></span>
           <span>Personal Best: <strong>{highScore}</strong></span>
         </div>
@@ -390,26 +514,26 @@ export default function Dashboard() {
           </div>
           {loading ? <Spinner text="" /> : upcoming.length
             ? <div className="assign-list">
-                {upcoming.map(a => (
-                  <AssignmentItem 
-                    key={a.id} 
-                    assignment={a} 
-                    compact 
-                    onClick={() => navigate('/assignments', { state: { openAssignmentId: a.id } })} 
-                  />
-                ))}
-              </div>
+              {upcoming.map(a => (
+                <AssignmentItem
+                  key={a.id}
+                  assignment={a}
+                  compact
+                  onClick={() => navigate('/assignments', { state: { openAssignmentId: a.id } })}
+                />
+              ))}
+            </div>
             : <div className="empty" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <CheckCircle2 size={32} className="text-accent" style={{ opacity: 0.5 }} />
-                <span>All assignments caught up!</span>
-              </div>
+              <CheckCircle2 size={32} className="text-accent" style={{ opacity: 0.5 }} />
+              <span>All assignments caught up!</span>
+            </div>
           }
         </div>
-        <div className="card-panel">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
           <div className="section-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Sparkles size={16} className="text-blue" />
-              <span className="section-title">Moodle Dino Jump & Scoreboard</span>
+              <span className="section-title">Alien Jump          Scoreboard</span>
             </div>
           </div>
           {loading ? (

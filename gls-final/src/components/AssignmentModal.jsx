@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { 
   X, XCircle, CheckCircle2, Clock, FileText, 
   BarChart3, FileSpreadsheet, Paperclip, File, 
@@ -242,10 +243,10 @@ export default function AssignmentModal({ assignment, onClose }) {
         : `${d} day(s) remaining`
   const timeColor = d < 0 ? 'var(--danger)' : d <= 3 ? 'var(--warning)' : 'var(--success)'
 
-  return (
+  return createPortal(
     <div
       onClick={e => e.target === e.currentTarget && onClose()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', padding: '40px 16px' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 100000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', padding: '40px 16px' }}
     >
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 18, width: '100%', maxWidth: 680, padding: 32, position: 'relative', margin: 'auto' }}>
 
@@ -529,6 +530,7 @@ export default function AssignmentModal({ assignment, onClose }) {
         {/* Scroll spacer */}
         <div style={{ height: 24 }} />
       </div>
-    </div >
+    </div >,
+    document.body
   )
 }
