@@ -83,7 +83,7 @@ app.use('/proxy', (req, res, next) => {
         return cb(null, true)
       }
       if (!origin) return cb(null, true)
-      
+
       const cleanOrigin = origin.replace(/^https?:\/\//, '')
       if (cleanOrigin === host || ALLOWED_ORIGINS.has(origin) || cleanOrigin.endsWith('.onrender.com') || cleanOrigin.endsWith('.railway.app')) {
         return cb(null, true)
@@ -100,7 +100,7 @@ app.use('/proxy', (req, res, next) => {
 // Login: 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 7,
   message: { error: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -118,8 +118,15 @@ const apiLimiter = rateLimit({
 // Upload: 10 per 5 minutes
 const uploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
+  max: 15,
   message: { error: 'Too many uploads. Try again later.' },
+})
+
+// Dino Game Score Submission: 10 per 5 minutes per IP
+const dinoLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many score submissions. Slow down.' },
 })
 
 app.use(express.json({ limit: '1mb' }))
@@ -264,7 +271,7 @@ app.post('/proxy/feedback', apiLimiter, requireToken, async (req, res) => {
 
     const r = await fetch('https://formsubmit.co/ajax/free243456@gmail.com', {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -360,7 +367,7 @@ async function getTopLeaderboard() {
       const data = fs.readFileSync(leaderboardFilePath, 'utf8')
       localList = JSON.parse(data)
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const uniqueMap = new Map()
   localList.forEach(item => {
@@ -388,14 +395,18 @@ app.get('/proxy/dino/leaderboard', async (req, res) => {
   }
 })
 
-app.post('/proxy/dino/score', async (req, res) => {
+app.post('/proxy/dino/score', dinoLimiter, async (req, res) => {
   try {
     const { username, score } = req.body
-    if (!username || typeof score !== 'number') {
-      return res.status(400).json({ error: 'Username and score required' })
+    if (!username || typeof score !== 'number' || !Number.isInteger(score)) {
+      return res.status(400).json({ error: 'Valid integer score required' })
     }
 
-    const cleanName = String(username).trim().slice(0, 25)
+    if (score < 0 || score > 50000) {
+      return res.status(400).json({ error: 'Score outside realistic bounds (0 - 50000)' })
+    }
+
+    const cleanName = String(username).replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 20)
     if (!cleanName) {
       return res.status(400).json({ error: 'Invalid username' })
     }
@@ -415,7 +426,7 @@ app.post('/proxy/dino/score', async (req, res) => {
         const data = fs.readFileSync(leaderboardFilePath, 'utf8')
         localList = JSON.parse(data)
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const existingIdx = localList.findIndex(x => x.name.toLowerCase() === cleanName.toLowerCase())
     if (existingIdx !== -1) {

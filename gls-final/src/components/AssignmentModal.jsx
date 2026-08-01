@@ -12,30 +12,95 @@ import toast from 'react-hot-toast'
 
 const MAX_SIZE = 2 * 1024 * 1024
 
-const loadScript = (url) => {
-  return new Promise((resolve, reject) => {
+const loadScriptWithFallbacks = async (urls) => {
+  const urlArray = Array.isArray(urls) ? urls : [urls]
+  let lastError = null
+
+  for (const url of urlArray) {
     if (document.querySelector(`script[src="${url}"]`)) {
-      resolve()
       return
     }
-    const script = document.createElement('script')
-    script.src = url
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error(`Failed to load script: ${url}`))
-    document.head.appendChild(script)
-  })
+    try {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.onload = () => resolve()
+        script.onerror = () => reject(new Error(`Failed to load script: ${url}`))
+        document.head.appendChild(script)
+      })
+      return
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw lastError || new Error('Failed to load script from all available CDNs.')
+}
+
+const getJSZip = async () => {
+  if (window.JSZip) return window.JSZip
+  try {
+    const mod = await import('jszip')
+    return mod.default || mod
+  } catch (err) {
+    console.warn('Failed to load local JSZip module, trying CDN fallbacks...', err)
+    await loadScriptWithFallbacks([
+      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+      'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+      'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
+    ])
+    return window.JSZip
+  }
+}
+
+const getPdfjs = async () => {
+  if (window.pdfjsLib) return window.pdfjsLib
+  try {
+    const mod = await import('pdfjs-dist')
+    const pdfjs = mod.default || mod
+    if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version || '3.4.120'}/pdf.worker.min.js`
+    }
+    return pdfjs
+  } catch (err) {
+    console.warn('Failed to load local pdfjs module, trying CDN fallbacks...', err)
+    await loadScriptWithFallbacks([
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js',
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js'
+    ])
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+    }
+    return window.pdfjsLib
+  }
+}
+
+const getJsPDF = async () => {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF
+  if (window.jsPDF) return window.jsPDF
+  try {
+    const mod = await import('jspdf')
+    return mod.jsPDF || mod.default?.jsPDF || mod.default
+  } catch (err) {
+    console.warn('Failed to load local jsPDF module, trying CDN fallbacks...', err)
+    await loadScriptWithFallbacks([
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+    ])
+    return window.jspdf?.jsPDF || window.jsPDF
+  }
 }
 
 const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js')
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+  const pdfjsLib = await getPdfjs()
+  const jsPDF = await getJsPDF()
 
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+  if (!pdfjsLib || !jsPDF) {
+    throw new Error('PDF compression libraries could not be loaded.')
+  }
 
   const arrayBuffer = await file.arrayBuffer()
-  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
 
-  const { jsPDF } = window.jspdf
   const doc = new jsPDF()
 
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -66,10 +131,13 @@ const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
 }
 
 const compressDOCX = async (file) => {
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js')
+  const JSZip = await getJSZip()
+  if (!JSZip) {
+    throw new Error('JSZip library could not be loaded.')
+  }
 
   const arrayBuffer = await file.arrayBuffer()
-  const zip = await window.JSZip.loadAsync(arrayBuffer)
+  const zip = await JSZip.loadAsync(arrayBuffer)
 
   const mediaFolder = zip.folder('word/media')
   if (mediaFolder) {

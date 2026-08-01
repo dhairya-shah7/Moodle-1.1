@@ -41,16 +41,30 @@ export function AuthProvider({ children }) {
 
   // Returns true if this faculty member teaches the given courseId
   const canEditCourse = useCallback((courseId) => {
-    if (role === 'admin') return true
-    if (role === 'faculty') return teachingCourseIds.has(Number(courseId)) || teachingCourseIds.has(String(courseId))
+    if (user?.issiteadmin) return true
+    if (teachingCourseIds.size > 0) return teachingCourseIds.has(Number(courseId)) || teachingCourseIds.has(String(courseId))
     return false
-  }, [role, teachingCourseIds])
+  }, [user, teachingCourseIds])
+
+  // Verify role against user profile flags to prevent DevTools localStorage tampering
+  const verifiedRole = user?.issiteadmin ? 'admin' : (teachingCourseIds.size > 0 && role === 'faculty' ? 'faculty' : (role === 'admin' && !user?.issiteadmin ? 'student' : role))
+  const isAdmin = !!(user?.issiteadmin || (verifiedRole === 'admin' && user?.issiteadmin))
+  const isFaculty = isAdmin || (verifiedRole === 'faculty' && teachingCourseIds.size > 0)
+  const isStudent = !isAdmin && !isFaculty
 
   return (
-    <AuthContext.Provider value={{ token, user, role, teachingCourseIds, login, logout, isLoggedIn: !!token, canEditCourse,
-      isAdmin: role === 'admin',
-      isFaculty: role === 'faculty' || role === 'admin',
-      isStudent: role === 'student',
+    <AuthContext.Provider value={{ 
+      token, 
+      user, 
+      role: verifiedRole, 
+      teachingCourseIds, 
+      login, 
+      logout, 
+      isLoggedIn: !!token, 
+      canEditCourse,
+      isAdmin,
+      isFaculty,
+      isStudent,
     }}>
       {children}
     </AuthContext.Provider>

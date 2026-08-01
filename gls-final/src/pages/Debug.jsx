@@ -4,10 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { useAppData } from '../context/AppDataContext'
 import Spinner from '../components/Spinner'
 
-const ADMIN_USERNAME = 'a24cse057'
-
 export default function Debug() {
-  const { token, user } = useAuth()
+  const { token, user, isAdmin } = useAuth()
   const navigate = useNavigate()
   const { courses, assignments, submissions, files, calendarEvents, loading } = useAppData()
 
@@ -16,7 +14,7 @@ export default function Debug() {
   const [testing, setTesting] = useState(false)
 
   // Block non-admin users entirely
-  if (!user || user.username !== ADMIN_USERNAME) {
+  if (!user || !isAdmin) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16 }}>
         <div style={{ fontSize: 48 }}>🔒</div>

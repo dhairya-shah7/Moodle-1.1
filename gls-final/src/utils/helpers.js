@@ -87,11 +87,13 @@ export const forceDownload = async (url, filename) => {
 
 export function sanitizeHtml(html) {
   if (!html) return ''
-  return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+  return String(html)
+    .replace(/<(script|iframe|object|embed|form|base|meta|link)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|iframe|object|embed|form|base|meta|link)[^>]*\/?>/gi, '')
     .replace(/on\w+\s*=\s*"(?:[^"]*)"/gi, '')
     .replace(/on\w+\s*=\s*'(?:[^']*)'/gi, '')
     .replace(/on\w+\s*=\s*([^>\s]+)/gi, '')
+    .replace(/(srcdoc|formaction)\s*=\s*[^>\s]+/gi, '')
     .replace(/javascript\s*:/gi, 'noop:')
 }
 
