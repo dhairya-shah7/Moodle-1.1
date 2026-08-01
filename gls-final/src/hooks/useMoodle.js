@@ -93,6 +93,16 @@ export function useMoodle() {
     return fetch(url.toString()).then(r => r.json())
   }
 
+  const deleteSubmission = (assignId) => {
+    const url = new URL('/proxy/api', window.location.origin)
+    url.searchParams.set('wstoken', token)
+    url.searchParams.set('wsfunction', 'mod_assign_save_submission')
+    url.searchParams.set('moodlewsrestformat', 'json')
+    url.searchParams.set('assignmentid', assignId)
+    url.searchParams.set('plugindata[files_filemanager]', 0)
+    return fetch(url.toString()).then(r => r.json())
+  }
+
   const submitForGrading = (assignId) => {
     const url = new URL('/proxy/api', window.location.origin)
     url.searchParams.set('wstoken', token)
@@ -226,7 +236,7 @@ export function useMoodle() {
     getSiteInfo, getCourses, getAllCourses, getAssignments, getGrades,
     getSubmissionStatus, getSubmissions, saveGrade, getEnrolledUsers,
     getCalendarEvents,
-    uploadFileToDraft, saveSubmission, submitForGrading,
+    uploadFileToDraft, saveSubmission, deleteSubmission, submitForGrading,
     getCourseFiles, getResourceFiles, getUrlResources, getNotifications,
   }
 }

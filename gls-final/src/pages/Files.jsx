@@ -319,8 +319,8 @@ export default function Files() {
 
               {isOpen && Object.entries(course.sections).map(([secName, secFiles]) => (
                 <div key={secName}>
-                  <div style={{ padding: '10px 22px', fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 1, background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Folder size={12} /> {secName} &nbsp;·&nbsp; {secFiles.length} item{secFiles.length !== 1 ? 's' : ''}
+                  <div style={{ padding: '10px 22px', fontSize: 12, fontWeight: 800, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: 1, background: 'rgba(99, 102, 241, 0.08)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Folder size={14} color="var(--accent)" /> {secName} &nbsp;·&nbsp; {secFiles.length} item{secFiles.length !== 1 ? 's' : ''}
                   </div>
                   {viewMode === 'grid' ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: 16, padding: '18px 22px 20px' }}>

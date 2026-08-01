@@ -443,6 +443,22 @@ export default function AssignmentModal({ assignment, onClose }) {
                 setUploading(false)
               }
 
+              const handleDeleteSubmission = async () => {
+                if (!window.confirm('Are you sure you want to delete this submission from Moodle?')) return
+
+                setUploading(true)
+                try {
+                  toast.loading('Deleting submission from Moodle...', { id: 'delete-sub' })
+                  await moodle.deleteSubmission(assignment.id)
+                  await refreshSubmission(assignment.id)
+                  toast.success('Submission deleted from Moodle!', { id: 'delete-sub' })
+                } catch (e) {
+                  console.error('Delete error:', e)
+                  toast.error('Delete failed: ' + e.message, { id: 'delete-sub' })
+                }
+                setUploading(false)
+              }
+
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, marginBottom: 6, border: '1px solid var(--border)' }}>
                   <File size={20} style={{ color: 'var(--accent)' }} />
@@ -461,6 +477,7 @@ export default function AssignmentModal({ assignment, onClose }) {
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button disabled={uploading} onClick={handleRename} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Rename</button>
                     <button disabled={uploading} onClick={() => fileInputRef.current.click()} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Replace</button>
+                    <button disabled={uploading} onClick={handleDeleteSubmission} style={{ padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 6, fontSize: 11, color: '#ef4444', fontWeight: 600, cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Delete</button>
                   </div>
                 </div>
               )

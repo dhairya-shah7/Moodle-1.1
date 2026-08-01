@@ -33,6 +33,14 @@ const ScoreSchema = new mongoose.Schema({
 })
 const Score = mongoose.models.Score || mongoose.model('Score', ScoreSchema)
 
+const LikeSchema = new mongoose.Schema({
+  targetUser: { type: String, required: true, default: 'a24cse057' },
+  likedBy: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now }
+})
+LikeSchema.index({ targetUser: 1, likedBy: 1 }, { unique: true })
+const Like = mongoose.models.Like || mongoose.model('Like', LikeSchema)
+
 const app = express()
 const MOODLE = 'https://btech.glsmoodle.in'
 
@@ -451,6 +459,108 @@ app.post('/proxy/dino/score', dinoLimiter, async (req, res) => {
   } catch (e) {
     console.error('Error submitting score:', e)
     res.status(500).json({ error: 'Failed to submit score' })
+  }
+})
+
+// ── Profile Likes Endpoints (MongoDB / JSON fallback)
+const likesFilePath = path.join(__dirname, 'likes.json')
+
+async function getLikesData(targetUser = 'a24cse057', currentUsername = '') {
+  let count = 0
+  let likers = []
+  let hasLiked = false
+  const targetLower = targetUser.toLowerCase()
+  const currentLower = currentUsername.toLowerCase()
+
+  if (isMongoConnected) {
+    try {
+      const records = await Like.find({ targetUser: targetLower }).lean()
+      count = records.length
+      likers = records.map(r => r.likedBy)
+      if (currentLower) {
+        hasLiked = records.some(r => r.likedBy?.toLowerCase() === currentLower)
+      }
+      return { count, hasLiked, likers }
+    } catch (e) {
+      console.error('MongoDB getLikes failed, using fallback:', e)
+    }
+  }
+
+  let localLikes = []
+  try {
+    if (fs.existsSync(likesFilePath)) {
+      localLikes = JSON.parse(fs.readFileSync(likesFilePath, 'utf8'))
+    }
+  } catch (e) {}
+
+  const targetLikes = localLikes.filter(item => item.targetUser?.toLowerCase() === targetLower)
+  count = targetLikes.length
+  likers = targetLikes.map(item => item.likedBy)
+  if (currentLower) {
+    hasLiked = targetLikes.some(item => item.likedBy?.toLowerCase() === currentLower)
+  }
+
+  return { count, hasLiked, likers }
+}
+
+app.get('/proxy/likes', async (req, res) => {
+  try {
+    const target = req.query.target || 'a24cse057'
+    const user = req.query.user || ''
+    const data = await getLikesData(target, user)
+    res.json(data)
+  } catch (e) {
+    console.error('Error fetching likes:', e)
+    res.status(500).json({ error: 'Failed to fetch likes' })
+  }
+})
+
+app.post('/proxy/like', async (req, res) => {
+  try {
+    const { likedBy, targetUser = 'a24cse057' } = req.body
+    if (!likedBy) {
+      return res.status(400).json({ error: 'likedBy username required' })
+    }
+
+    const cleanLiker = String(likedBy).trim()
+    const cleanTarget = String(targetUser).trim()
+    const likerLower = cleanLiker.toLowerCase()
+    const targetLower = cleanTarget.toLowerCase()
+
+    if (isMongoConnected) {
+      try {
+        await Like.updateOne(
+          { targetUser: targetLower, likedBy: likerLower },
+          { $setOnInsert: { targetUser: targetLower, likedBy: cleanLiker, timestamp: new Date() } },
+          { upsert: true }
+        )
+      } catch (err) {
+        console.error('Failed to save like to MongoDB:', err)
+      }
+    }
+
+    let localLikes = []
+    try {
+      if (fs.existsSync(likesFilePath)) {
+        localLikes = JSON.parse(fs.readFileSync(likesFilePath, 'utf8'))
+      }
+    } catch (e) {}
+
+    const exists = localLikes.some(x => x.targetUser?.toLowerCase() === targetLower && x.likedBy?.toLowerCase() === likerLower)
+    if (!exists) {
+      localLikes.push({ targetUser: cleanTarget, likedBy: cleanLiker, timestamp: new Date().toISOString() })
+      try {
+        fs.writeFileSync(likesFilePath, JSON.stringify(localLikes, null, 2), 'utf8')
+      } catch (e) {
+        console.error('Failed to write local likes fallback file:', e)
+      }
+    }
+
+    const updated = await getLikesData(cleanTarget, cleanLiker)
+    res.json({ success: true, ...updated })
+  } catch (e) {
+    console.error('Error recording like:', e)
+    res.status(500).json({ error: 'Failed to record like' })
   }
 })
 

@@ -374,13 +374,15 @@ function DinoGame({ user }) {
       ctx.fillStyle = colorText
       ctx.font = '16px monospace'
       ctx.textAlign = 'right'
-      ctx.fillText('Score: ' + Math.floor(state.score), 580, 25)
+      ctx.textBaseline = 'top'
+      ctx.fillText('Score: ' + Math.floor(state.score), width - 20, 15)
 
       // Start Screen
       if (!state.started) {
         ctx.fillStyle = colorText
-        ctx.font = '18px monospace'
+        ctx.font = '16px monospace'
         ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
         ctx.fillText('Tap / Space to start', width / 2, height / 2)
       }
 
@@ -391,9 +393,11 @@ function DinoGame({ user }) {
         ctx.fillStyle = '#ef4444'
         ctx.font = 'bold 20px monospace'
         ctx.textAlign = 'center'
-        ctx.fillText('GAME OVER', width / 2, height / 2 - 10)
+        ctx.textBaseline = 'middle'
+        ctx.fillText('GAME OVER', width / 2, height / 2 - 15)
         ctx.fillStyle = colorText
         ctx.font = '14px monospace'
+        ctx.textBaseline = 'middle'
         ctx.fillText('Tap / Space to restart', width / 2, height / 2 + 15)
       }
 
