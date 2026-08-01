@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useMoodle } from '../hooks/useMoodle'
 import Spinner from '../components/Spinner'
-import { Edit, ExternalLink, Key, Settings, Award, Info, Heart } from 'lucide-react'
+import { Edit, ExternalLink, Key, Settings, Award, Info } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
-import toast from 'react-hot-toast'
 
 const MOODLE = 'https://btech.glsmoodle.in'
 
@@ -14,12 +13,8 @@ export default function Profile() {
   const { isDark } = useTheme()
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
-  const [likesCount, setLikesCount] = useState(0)
-  const [hasLiked, setHasLiked] = useState(false)
-  const [liking, setLiking] = useState(false)
 
   const grayColor = isDark ? 'var(--text2)' : 'var(--text3)'
-  const isTargetAdminUser = user?.username?.toLowerCase() === 'a24cse057'
 
   useEffect(() => {
     if (!user?.userid) return
@@ -28,37 +23,6 @@ export default function Profile() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [user?.userid])
-
-  useEffect(() => {
-    fetch(`/proxy/likes?target=a24cse057&user=${encodeURIComponent(user?.username || '')}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.count !== undefined) setLikesCount(data.count)
-        if (data.hasLiked !== undefined) setHasLiked(data.hasLiked)
-      })
-      .catch(e => console.error('Failed to load likes', e))
-  }, [user?.username])
-
-  const handleLike = async () => {
-    if (hasLiked || liking || !user?.username) return
-    setLiking(true)
-    try {
-      const res = await fetch('/proxy/like', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ likedBy: user.username, targetUser: 'a24cse057' })
-      }).then(r => r.json())
-
-      if (res.success) {
-        setHasLiked(true)
-        setLikesCount(res.count)
-        toast.success('Liked! ❤️')
-      }
-    } catch (e) {
-      toast.error('Failed to record like')
-    }
-    setLiking(false)
-  }
 
   const card = (children, style = {}) => (
     <div style={{
@@ -107,37 +71,8 @@ export default function Profile() {
           {(user?.lastname || user?.fullname || 'U')[0].toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <span>{user?.username} {user?.fullname || user?.lastname}</span>
-            {isTargetAdminUser ? (
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '4px 14px', borderRadius: 20,
-                background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#ef4444', fontSize: 13, fontWeight: 700
-              }}>
-                <Heart size={16} fill="#ef4444" color="#ef4444" />
-                <span>{likesCount} {likesCount === 1 ? 'Like' : 'Likes'}</span>
-              </div>
-            ) : (
-              <button
-                onClick={handleLike}
-                disabled={hasLiked || liking}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '4px 12px', borderRadius: 20, cursor: hasLiked ? 'default' : 'pointer',
-                  background: hasLiked ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface2)',
-                  border: `1px solid ${hasLiked ? 'rgba(239, 68, 68, 0.4)' : 'var(--border)'}`,
-                  color: hasLiked ? '#ef4444' : 'var(--text2)',
-                  fontSize: 13, fontWeight: 600, transition: 'all 0.2s',
-                  opacity: liking ? 0.6 : 1
-                }}
-                title={hasLiked ? 'You have already liked' : 'Click to send a heart'}
-              >
-                <Heart size={16} fill={hasLiked ? '#ef4444' : 'none'} color={hasLiked ? '#ef4444' : 'currentColor'} />
-                <span>{hasLiked ? 'Liked' : 'Like'}</span>
-              </button>
-            )}
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+            {user?.username} {user?.fullname || user?.lastname}
           </div>
           <div style={{ fontSize: 13, color: grayColor }}>GLS University · Ahmedabad</div>
         </div>

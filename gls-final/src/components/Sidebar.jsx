@@ -16,10 +16,12 @@ import {
   Search,
   ChevronUp,
   Inbox,
+  Heart,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { truncate } from '../utils/helpers'
 import { useTheme } from '../hooks/useTheme'
+import toast from 'react-hot-toast'
 
 const MOODLE = 'https://btech.glsmoodle.in'
 
@@ -92,6 +94,44 @@ export default function Sidebar({ badges = {} }) {
   const [faqSending, setFaqSending] = useState(false)
   const [faqSuccess, setFaqSuccess] = useState(false)
   const [notifPermission, setNotifPermission] = useState(() => typeof Notification !== 'undefined' ? Notification.permission : 'default')
+  const [likesCount, setLikesCount] = useState(0)
+  const [hasLiked, setHasLiked] = useState(false)
+  const [liking, setLiking] = useState(false)
+
+  const isTargetAdminUser = user?.username?.toLowerCase() === 'a24cse057'
+
+  useEffect(() => {
+    if (!user?.username) return
+    fetch(`/proxy/likes?target=a24cse057&user=${encodeURIComponent(user?.username || '')}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.count !== undefined) setLikesCount(data.count)
+        if (data.hasLiked !== undefined) setHasLiked(data.hasLiked)
+      })
+      .catch(e => console.error('Failed to load likes in Sidebar', e))
+  }, [user?.username])
+
+  const handleLike = async (e) => {
+    e.stopPropagation()
+    if (hasLiked || liking || !user?.username) return
+    setLiking(true)
+    try {
+      const res = await fetch('/proxy/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ likedBy: user.username, targetUser: 'a24cse057' })
+      }).then(r => r.json())
+
+      if (res.success) {
+        setHasLiked(true)
+        setLikesCount(res.count)
+        toast.success('Liked! ❤️')
+      }
+    } catch (e) {
+      toast.error('Failed to record like')
+    }
+    setLiking(false)
+  }
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -147,11 +187,43 @@ export default function Sidebar({ badges = {} }) {
       </nav>
 
       <div id="bottom-nav-sheet" className={`bottom-nav__sheet${sheetOpen ? ' open' : ''}`} ref={sheetRef} aria-hidden={!sheetOpen}>
-        <div className="bottom-nav__sheet-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="bottom-nav__avatar">{initials}</div>
-            <div>
-              <div className="bottom-nav__name">{user?.fullname}</div>
+        <div className="bottom-nav__sheet-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 auto' }}>
+            <div className="bottom-nav__avatar" style={{ flexShrink: 0 }}>{initials}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="bottom-nav__name" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{user?.fullname}</span>
+                {isTargetAdminUser ? (
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 8px', borderRadius: 12,
+                    background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#ef4444', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0
+                  }}>
+                    <Heart size={13} fill="#ef4444" color="#ef4444" />
+                    <span>{likesCount} {likesCount === 1 ? 'Like' : 'Likes'}</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLike}
+                    disabled={hasLiked || liking}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '2px 8px', borderRadius: 12, cursor: hasLiked ? 'default' : 'pointer',
+                      background: hasLiked ? 'rgba(239, 68, 68, 0.15)' : 'var(--surface3)',
+                      border: `1px solid ${hasLiked ? 'rgba(239, 68, 68, 0.4)' : 'var(--border)'}`,
+                      color: hasLiked ? '#ef4444' : 'var(--text2)',
+                      fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.2s', flexShrink: 0,
+                      opacity: liking ? 0.6 : 1
+                    }}
+                    title={hasLiked ? 'You have already liked' : 'Click to send a heart'}
+                  >
+                    <Heart size={13} fill={hasLiked ? '#ef4444' : 'none'} color={hasLiked ? '#ef4444' : 'currentColor'} />
+                    <span>{hasLiked ? 'Liked' : 'Like'}</span>
+                  </button>
+                )}
+              </div>
               <div className="bottom-nav__meta">{dispId}</div>
               <div className="bottom-nav__role">{roleStyle.label}</div>
             </div>
@@ -171,12 +243,12 @@ export default function Sidebar({ badges = {} }) {
               transition: 'all 0.15s ease',
               display: 'flex',
               alignItems: 'center',
-              gap: 4
+              gap: 4,
+              flexShrink: 0
             }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-soft)'}
             onMouseLeave={e => e.currentTarget.style.background = 'var(--surface3)'}
           >
-            FAQ & Help
           </button>
         </div>
 
