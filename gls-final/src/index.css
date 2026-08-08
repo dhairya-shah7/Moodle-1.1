@@ -1285,6 +1285,16 @@ body.light .login-box {
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 20px var(--accent-glow);
 }
 
+input::-ms-reveal,
+input::-ms-clear,
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+
 .field-group {
   margin-bottom: 18px;
 }

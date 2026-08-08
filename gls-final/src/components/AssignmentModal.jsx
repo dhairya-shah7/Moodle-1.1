@@ -9,6 +9,7 @@ import { useMoodle } from '../hooks/useMoodle'
 import { useAppData } from '../context/AppDataContext'
 import { fmt, daysLeft, assignStatus, getViewerUrl, sanitizeHtml, forceDownload } from '../utils/helpers'
 import toast from 'react-hot-toast'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 const MAX_SIZE = 2 * 1024 * 1024
 
@@ -53,22 +54,28 @@ const getJSZip = async () => {
 }
 
 const getPdfjs = async () => {
-  if (window.pdfjsLib) return window.pdfjsLib
+  if (window.pdfjsLib) {
+    if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+    }
+    return window.pdfjsLib
+  }
   try {
     const mod = await import('pdfjs-dist')
     const pdfjs = mod.default || mod
-    if (pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-      pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version || '3.4.120'}/pdf.worker.min.js`
+    if (pdfjs.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
     }
     return pdfjs
   } catch (err) {
     console.warn('Failed to load local pdfjs module, trying CDN fallbacks...', err)
     await loadScriptWithFallbacks([
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js',
-      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.min.js'
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.min.mjs',
+      'https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs',
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js'
     ])
     if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs'
     }
     return window.pdfjsLib
   }
@@ -99,7 +106,20 @@ const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
   }
 
   const arrayBuffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  let pdf
+  try {
+    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  } catch (err) {
+    console.warn('PDF worker load failed, using inline rendering fallback...', err)
+    try {
+      if (pdfjsLib.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+      }
+      pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    } catch (fallbackErr) {
+      throw new Error('Could not parse PDF file: ' + (fallbackErr.message || err.message))
+    }
+  }
 
   const doc = new jsPDF()
 
@@ -122,6 +142,9 @@ const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
     const pdfWidth = doc.internal.pageSize.getWidth()
     const pdfHeight = doc.internal.pageSize.getHeight()
     doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
+
+    canvas.width = 0
+    canvas.height = 0
   }
 
   const compressedBlob = doc.output('blob')
@@ -177,6 +200,8 @@ const compressDOCX = async (file) => {
             if (compressedBlob) {
               zip.file(zipEntry.name, compressedBlob)
             }
+            canvas.width = 0
+            canvas.height = 0
           } catch (e) {
             console.warn('Failed to compress document image', zipEntry.name, e)
           }
@@ -244,7 +269,10 @@ export default function AssignmentModal({ assignment, onClose }) {
         }
       }
 
-      if (resultFile.size > MAX_SIZE) {
+      if (resultFile.size > file.size && file.size <= MAX_SIZE) {
+        resultFile = file
+        toast.success('Original file was already optimal under 2MB!', { id: 'compress' })
+      } else if (resultFile.size > MAX_SIZE) {
         toast.error(`Compressed file is still ${(resultFile.size / (1024 * 1024)).toFixed(2)}MB (exceeds 2MB).`, { id: 'compress' })
         setError(`Compressed file size (${(resultFile.size / (1024 * 1024)).toFixed(2)}MB) exceeds 2MB limit.`)
       } else {

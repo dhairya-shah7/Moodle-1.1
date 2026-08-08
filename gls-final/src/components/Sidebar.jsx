@@ -17,6 +17,7 @@ import {
   ChevronUp,
   Inbox,
   Heart,
+  HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { truncate } from '../utils/helpers'
@@ -223,33 +224,28 @@ export default function Sidebar({ badges = {} }) {
                     <span>{hasLiked ? 'Liked' : 'Like'}</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setShowFaq(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'var(--surface3)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease', flexShrink: 0
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-soft)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--surface3)'}
+                  title="FAQ & Support Help"
+                >
+                  <HelpCircle size={13} />
+                  <span>FAQ</span>
+                </button>
               </div>
               <div className="bottom-nav__meta">{dispId}</div>
               <div className="bottom-nav__role">{roleStyle.label}</div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowFaq(true)}
-            style={{
-              background: 'var(--surface3)',
-              border: '1px solid var(--border)',
-              borderRadius: '10px',
-              padding: '6px 12px',
-              color: 'var(--text)',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              flexShrink: 0
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-soft)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'var(--surface3)'}
-          >
-          </button>
         </div>
 
         <div className="bottom-nav__sheet-grid">
