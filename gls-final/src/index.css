@@ -522,9 +522,9 @@ body::before {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 2.5px;
   background: linear-gradient(90deg, var(--accent), var(--accent2));
-  opacity: 0;
+  opacity: 0.7;
   transition: opacity .25s;
   border-radius: 16px 16px 0 0;
 }
@@ -635,10 +635,11 @@ body::before {
   position: absolute;
   inset: -2px;
   border-radius: 18px;
-  background: conic-gradient(from var(--angle, 0deg), transparent 60%, var(--accent) 72%, var(--accent2) 82%, transparent 95%);
-  opacity: 0;
+  background: conic-gradient(from var(--angle, 0deg), transparent 50%, var(--accent) 70%, var(--accent2) 85%, transparent 98%);
+  opacity: 0.55;
   transition: opacity .3s;
   z-index: 0;
+  animation: borderSpin 6s linear infinite;
 }
 
 .course-card::after {
@@ -663,7 +664,7 @@ body::before {
 
 .course-card:hover::before {
   opacity: 1;
-  animation: borderSpin 2s linear infinite;
+  animation: borderSpin 2.5s linear infinite;
 }
 
 .course-name {
