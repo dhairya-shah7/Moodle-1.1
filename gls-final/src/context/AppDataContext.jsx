@@ -143,19 +143,38 @@ export function AppDataProvider({ children }) {
       // Only load submission statuses for students
       if (role === 'student') {
         await loadSubmissions(a)
+        const dueToday = []
+        const dueTomorrow = []
+
         a.forEach(assign => {
           if (toastedIds.current.has(assign.id)) return
           const d = daysLeft(assign.duedate)
           if (d === 0) {
-            toast.error(`🚨 Due Today: ${assign.name}`, { duration: 8000 })
-            sendDeviceNotification('Moodle 1.1 - Deadline Alert', `🚨 Due Today: ${assign.name}`)
+            dueToday.push(assign)
             toastedIds.current.add(assign.id)
           } else if (d === 1) {
-            toast(`⏰ Due Tomorrow: ${assign.name}`, { duration: 6000 })
-            sendDeviceNotification('Moodle 1.1 - Deadline Alert', `⏰ Due Tomorrow: ${assign.name}`)
+            dueTomorrow.push(assign)
             toastedIds.current.add(assign.id)
           }
         })
+
+        if (dueToday.length === 1) {
+          toast.error(`🚨 Due Today: ${dueToday[0].name}`, { duration: 8000 })
+          sendDeviceNotification('Moodle 1.1 - Deadline Alert', `🚨 Due Today: ${dueToday[0].name}`)
+        } else if (dueToday.length > 1) {
+          const msg = `🚨 ${dueToday.length} assignments are due today!`
+          toast.error(msg, { duration: 8000 })
+          sendDeviceNotification('Moodle 1.1 - Deadline Alert', msg)
+        }
+
+        if (dueTomorrow.length === 1) {
+          toast(`⏰ Due Tomorrow: ${dueTomorrow[0].name}`, { duration: 6000 })
+          sendDeviceNotification('Moodle 1.1 - Deadline Alert', `⏰ Due Tomorrow: ${dueTomorrow[0].name}`)
+        } else if (dueTomorrow.length > 1) {
+          const msg = `⏰ ${dueTomorrow.length} assignments are due tomorrow!`
+          toast(msg, { duration: 6000 })
+          sendDeviceNotification('Moodle 1.1 - Deadline Alert', msg)
+        }
       }
     } catch (e) {
       console.error('loadAll error', e)
@@ -213,11 +232,15 @@ export function AppDataProvider({ children }) {
         const a = await moodle.getAssignments(enrolledCourses)
         const newOnes = a.filter(x => !prevAssignIds.current.has(x.id))
         if (newOnes.length > 0 && prevAssignCount.current > 0) {
-          newOnes.forEach(assign => {
-            const msg = `📋 New assignment posted: ${assign.name}`
+          if (newOnes.length === 1) {
+            const msg = `📋 New assignment posted: ${newOnes[0].name}`
             toast(msg, { duration: 8000, icon: '📋' })
             sendDeviceNotification('Moodle 1.1 - New Assignment', msg)
-          })
+          } else {
+            const msg = `📋 ${newOnes.length} new assignments posted!`
+            toast(msg, { duration: 8000, icon: '📋' })
+            sendDeviceNotification('Moodle 1.1 - New Assignments', msg)
+          }
           setAssignments(a)
           if (role === 'student') await loadSubmissions(a)
         }
@@ -228,10 +251,28 @@ export function AppDataProvider({ children }) {
     return () => clearInterval(interval)
   }, [isLoggedIn, role])
 
+  const lastNotifTime = useRef(0)
+  const lastNotifTitle = useRef('')
+
   const sendDeviceNotification = useCallback((title, body) => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const now = Date.now()
+      if (now - lastNotifTime.current < 2000 && lastNotifTitle.current === `${title}:${body}`) {
+        return
+      }
+      lastNotifTime.current = now
+      lastNotifTitle.current = `${title}:${body}`
+
       try {
-        new Notification(title, { body, icon: '/logo192.png' })
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, { body, icon: '/logo192.png', tag: 'moodle-notif' })
+          }).catch(() => {
+            new Notification(title, { body, icon: '/logo192.png', tag: 'moodle-notif' })
+          })
+        } else {
+          new Notification(title, { body, icon: '/logo192.png', tag: 'moodle-notif' })
+        }
       } catch (e) {
         console.warn('Failed to display system notification', e)
       }
