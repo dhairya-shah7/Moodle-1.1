@@ -103,16 +103,44 @@ app.use('/proxy', (req, res, next) => {
 })
 
 // ══════════════════════════════════════════
-// 3. RATE LIMITING
+// 3. RATE LIMITING & BRUTE-FORCE DEFENSE
 // ══════════════════════════════════════════
 // Login: 5 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 7,
-  message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+  max: 5,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 })
+
+// Account Lockout Tracker against Multi-IP Cluster-Bombing
+const failedLoginTracker = new Map()
+
+function checkAccountLockout(username) {
+  const key = String(username).toLowerCase()
+  const record = failedLoginTracker.get(key)
+  if (record && record.count >= 5) {
+    if (Date.now() - record.lastAttempt < 15 * 60 * 1000) {
+      return true
+    } else {
+      failedLoginTracker.delete(key)
+    }
+  }
+  return false
+}
+
+function recordFailedLogin(username) {
+  const key = String(username).toLowerCase()
+  const record = failedLoginTracker.get(key) || { count: 0, lastAttempt: Date.now() }
+  record.count += 1
+  record.lastAttempt = Date.now()
+  failedLoginTracker.set(key, record)
+}
+
+function recordSuccessfulLogin(username) {
+  failedLoginTracker.delete(String(username).toLowerCase())
+}
 
 // API: 1000 requests per minute per IP (accommodates shared campus Wi-Fi NAT IPs)
 const apiLimiter = rateLimit({
@@ -126,29 +154,55 @@ const apiLimiter = rateLimit({
 // Upload: 10 per 5 minutes
 const uploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 15,
-  message: { error: 'Too many uploads. Try again later.' },
+  max: 10,
+  message: { error: 'Too many upload attempts. Try again later.' },
 })
 
-// Dino Game Score Submission: 10 per 5 minutes per IP
+// Dino Game Score Submission: 5 per 5 minutes per IP
 const dinoLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
+  max: 5,
   message: { error: 'Too many score submissions. Slow down.' },
 })
 
 app.use(express.json({ limit: '1mb' }))
 app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
+// Strict File Upload Filter against Viruses, Executables, Shells, Double Extensions & Zip Bombs
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'txt'])
+const BLOCKED_REGEX = /\.(exe|bat|cmd|sh|ps1|vbs|js|mjs|cjs|msi|dll|com|scr|php|phtml|phar|py|pl|cgi|jar|war|ear|iso|img|dmg|vhd|docm|xlsm|pptm|hta|cpl|inf|ins|reg|bas|zip|rar|7z|gz|tar)$/i
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024, files: 2 },
   fileFilter: (req, file, cb) => {
-    // Block executable / dangerous file types
-    const blocked = /\.(exe|bat|cmd|sh|ps1|vbs|js|msi|dll|com|scr)$/i
-    if (blocked.test(file.originalname)) {
-      return cb(new Error('File type not allowed'), false)
+    const originalName = file.originalname || ''
+
+    // 1. Reject null bytes or URL encoded null bytes
+    if (originalName.includes('\0') || originalName.includes('%00')) {
+      return cb(new Error('Security violation: Invalid characters in filename'), false)
     }
+
+    // 2. Reject double extensions (e.g. invoice.pdf.exe or script.php.docx)
+    const parts = originalName.split('.').filter(Boolean)
+    if (parts.length > 2) {
+      const middleExts = parts.slice(1, -1).map(p => p.toLowerCase())
+      if (middleExts.some(ext => BLOCKED_REGEX.test(`.${ext}`))) {
+        return cb(new Error('Security violation: Suspicious file extension structure'), false)
+      }
+    }
+
+    // 3. Reject blacklisted dangerous file types
+    if (BLOCKED_REGEX.test(originalName)) {
+      return cb(new Error('Security violation: File type not permitted'), false)
+    }
+
+    // 4. Require whitelisted document/image extensions
+    const ext = parts.pop()?.toLowerCase()
+    if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+      return cb(new Error('Only PDF, Word, PowerPoint, Excel, TXT and image files are permitted'), false)
+    }
+
     cb(null, true)
   },
 })
@@ -181,7 +235,7 @@ const ALLOWED_FUNCTIONS = new Set([
 // ══════════════════════════════════════════
 function requireToken(req, res, next) {
   const token = req.query.wstoken || req.body?.wstoken
-  if (!token || token.length < 10) {
+  if (!token || typeof token !== 'string' || token.length < 10) {
     return res.status(401).json({ error: 'Missing or invalid token' })
   }
   // Basic token format check (Moodle tokens are 32-char hex)
@@ -196,7 +250,7 @@ function requireToken(req, res, next) {
 // ══════════════════════════════════════════
 function requireAllowedFunction(req, res, next) {
   const fn = req.query.wsfunction || req.body?.wsfunction
-  if (!fn || !ALLOWED_FUNCTIONS.has(fn)) {
+  if (!fn || typeof fn !== 'string' || !ALLOWED_FUNCTIONS.has(fn)) {
     return res.status(403).json({ error: `Function '${fn}' is not allowed` })
   }
   next()
@@ -206,28 +260,42 @@ function requireAllowedFunction(req, res, next) {
 // ROUTES
 // ══════════════════════════════════════════
 
-// ── Token login (rate-limited)
+// ── Token login (rate-limited & cluster-bombing protected)
 app.post('/proxy/token', loginLimiter, async (req, res) => {
   try {
     const { username, password } = req.body
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Invalid payload structure' })
+    }
+    const cleanUser = username.trim()
+    const cleanPass = password.trim()
+
+    if (!cleanUser || !cleanPass) {
       return res.status(400).json({ error: 'Username and password required' })
     }
     // Sanitize: only allow alphanumeric + basic chars in username
-    if (!/^[a-zA-Z0-9_@.\-]+$/.test(username)) {
+    if (!/^[a-zA-Z0-9_@.\-]+$/.test(cleanUser)) {
       return res.status(400).json({ error: 'Invalid username format' })
     }
+
+    // Account level lockout check (protects against multi-IP cluster bombing)
+    if (checkAccountLockout(cleanUser)) {
+      return res.status(429).json({ error: 'Account temporarily locked due to multiple failed login attempts. Try again in 15 minutes.' })
+    }
+
     const r = await fetch(`${MOODLE}/login/token.php`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&service=moodle_mobile_app`,
+      body: `username=${encodeURIComponent(cleanUser)}&password=${encodeURIComponent(cleanPass)}&service=moodle_mobile_app`,
     })
     const data = await r.json()
     console.log('[TOKEN]', data.token ? '✅ OK' : '❌ Failed')
-    // Don't leak internal error details
+
     if (!data.token) {
-      return res.status(401).json({ error: data.error || 'Invalid credentials' })
+      recordFailedLogin(cleanUser)
+      return res.status(401).json({ error: 'Invalid credentials' })
     }
+    recordSuccessfulLogin(cleanUser)
     res.json(data)
   } catch (e) {
     res.status(500).json({ error: 'Login service unavailable' })
@@ -505,8 +573,8 @@ async function getLikesData(targetUser = 'a24cse057', currentUsername = '') {
 
 app.get('/proxy/likes', async (req, res) => {
   try {
-    const target = req.query.target || 'a24cse057'
-    const user = req.query.user || ''
+    const target = typeof req.query.target === 'string' ? req.query.target : 'a24cse057'
+    const user = typeof req.query.user === 'string' ? req.query.user : ''
     const data = await getLikesData(target, user)
     res.json(data)
   } catch (e) {
@@ -518,12 +586,15 @@ app.get('/proxy/likes', async (req, res) => {
 app.post('/proxy/like', async (req, res) => {
   try {
     const { likedBy, targetUser = 'a24cse057' } = req.body
-    if (!likedBy) {
-      return res.status(400).json({ error: 'likedBy username required' })
+    if (!likedBy || typeof likedBy !== 'string' || (targetUser && typeof targetUser !== 'string')) {
+      return res.status(400).json({ error: 'Invalid input types' })
     }
 
-    const cleanLiker = String(likedBy).trim()
-    const cleanTarget = String(targetUser).trim()
+    const cleanLiker = String(likedBy).trim().slice(0, 30)
+    const cleanTarget = String(targetUser).trim().slice(0, 30)
+    if (!cleanLiker || !/^[a-zA-Z0-9_@.\-]+$/.test(cleanLiker)) {
+      return res.status(400).json({ error: 'Invalid username format' })
+    }
     const likerLower = cleanLiker.toLowerCase()
     const targetLower = cleanTarget.toLowerCase()
 

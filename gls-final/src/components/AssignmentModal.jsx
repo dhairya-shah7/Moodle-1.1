@@ -162,6 +162,22 @@ const compressDOCX = async (file) => {
   const arrayBuffer = await file.arrayBuffer()
   const zip = await JSZip.loadAsync(arrayBuffer)
 
+  let totalEntries = 0
+  let totalUncompressedSize = 0
+  const MAX_ENTRIES = 150
+  const MAX_UNCOMPRESSED_TOTAL = 30 * 1024 * 1024 // 30MB max uncompressed
+
+  zip.forEach((relativePath, zipEntry) => {
+    totalEntries++
+    if (zipEntry._data && zipEntry._data.uncompressedSize) {
+      totalUncompressedSize += zipEntry._data.uncompressedSize
+    }
+  })
+
+  if (totalEntries > MAX_ENTRIES || totalUncompressedSize > MAX_UNCOMPRESSED_TOTAL) {
+    throw new Error('File archive structure exceeds safety limits (Zip Bomb protection).')
+  }
+
   const mediaFolder = zip.folder('word/media')
   if (mediaFolder) {
     const promises = []
