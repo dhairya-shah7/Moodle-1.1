@@ -114,10 +114,10 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// API: 200 requests per minute per IP
+// API: 1000 requests per minute per IP (accommodates shared campus Wi-Fi NAT IPs)
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
+  max: 1000,
   message: { error: 'Rate limit exceeded. Slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
