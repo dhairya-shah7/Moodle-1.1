@@ -1,85 +1,85 @@
 /* ── FONTS ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 
 /* ══════════════════════════════════════════
-   DARK — deep slate/zinc + cobalt indigo
+   DARK — Warm Deep Mocha & Terracotta Copper
 ══════════════════════════════════════════ */
 :root {
   /* backgrounds */
-  --bg-raw: #1A1D21;
-  --bg: #1A1D21;
-  --surface: #2A2F38;
-  --surface2: #353A45;
-  --surface3: #444b5a;
+  --bg-raw: #181512;
+  --bg: #181512;
+  --surface: #24201C;
+  --surface2: #2E2924;
+  --surface3: #3B352E;
 
   /* borders */
-  --border: #353A45;
-  --border2: #444b5a;
+  --border: #332D27;
+  --border2: #423B33;
 
   /* text */
-  --text: #fafafa;
-  --text2: #a1a1aa;
-  --text3: #52525b;
+  --text: #F8F4EE;
+  --text2: #B8ADA2;
+  --text3: #7A7065;
 
-  /* accent — Slate Indigo (Cobalt) */
-  --accent: #6366f1;
-  --accent2: #818cf8;
-  --accent-glow: rgba(99, 102, 241, 0.05);
-  --accent-soft: rgba(99, 102, 241, 0.04);
-  --accent-bd: rgba(99, 102, 241, 0.15);
+  /* accent — Rich Warm Terracotta & Burnt Copper */
+  --accent: #D96A38;
+  --accent2: #EA8354;
+  --accent-glow: rgba(217, 106, 56, 0.08);
+  --accent-soft: rgba(217, 106, 56, 0.06);
+  --accent-bd: rgba(217, 106, 56, 0.22);
 
   /* status */
-  --success: #10b981;
-  --success-soft: rgba(16, 185, 129, 0.04);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.04);
-  --danger: #ef4444;
-  --danger-soft: rgba(239, 68, 68, 0.04);
-  --danger-bd: rgba(239, 68, 68, 0.12);
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.06);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.06);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.06);
+  --danger-bd: rgba(220, 38, 38, 0.18);
 
-  /* bg orbs used in mesh (greatly softened) */
-  --orb1: rgba(53, 58, 69, 0.4);
-  --orb2: rgba(42, 47, 56, 0.2);
-  --orb3: rgba(26, 29, 33, 0.8);
+  /* bg orbs */
+  --orb1: rgba(217, 106, 56, 0.08);
+  --orb2: rgba(217, 119, 6, 0.05);
+  --orb3: rgba(24, 21, 18, 0.9);
 
   /* misc */
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --dot-color: rgba(255, 255, 255, 0.02);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --dot-color: rgba(248, 244, 238, 0.03);
 }
 
 /* ══════════════════════════════════════════
-   LIGHT — premium minimalist white/zinc
+   LIGHT — Warm Cream Paper & Warm Terracotta Sienna
 ══════════════════════════════════════════ */
 body.light {
-  --bg-raw: #fafafa;
-  --bg: #fafafa;
-  --surface: #ffffff;
-  --surface2: #f4f4f5;
-  --surface3: #e4e4e7;
-  --border: #e4e4e7;
-  --border2: #d4d4d8;
-  --text: #18181b;
-  --text2: #71717a;
-  --text3: #a1a1aa;
-  --accent: #4f46e5;
-  --accent2: #6366f1;
-  --accent-glow: rgba(79, 70, 229, 0.04);
-  --accent-soft: rgba(79, 70, 229, 0.03);
-  --accent-bd: rgba(79, 70, 229, 0.12);
-  --success: #059669;
-  --success-soft: rgba(5, 150, 105, 0.04);
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.04);
-  --danger: #dc2626;
-  --danger-soft: rgba(220, 38, 38, 0.03);
-  --danger-bd: rgba(220, 38, 38, 0.1);
-  --orb1: rgba(228, 228, 231, 0.3);
-  --orb2: rgba(244, 244, 245, 0.2);
-  --orb3: rgba(250, 250, 250, 0.6);
-  --shadow: 0 1px 2px 0 rgba(9, 9, 11, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(9, 9, 11, 0.05), 0 4px 6px -4px rgba(9, 9, 11, 0.05);
-  --dot-color: rgba(9, 9, 11, 0.03);
+  --bg-raw: #FAF6F0;
+  --bg: #FAF6F0;
+  --surface: #FFFFFF;
+  --surface2: #F2ECE2;
+  --surface3: #E5DCD0;
+  --border: #E5DDD0;
+  --border2: #D6CABE;
+  --text: #241E19;
+  --text2: #6B6055;
+  --text3: #9C9083;
+  --accent: #C9572C;
+  --accent2: #DD6B3E;
+  --accent-glow: rgba(201, 87, 44, 0.06);
+  --accent-soft: rgba(201, 87, 44, 0.05);
+  --accent-bd: rgba(201, 87, 44, 0.18);
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.05);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.05);
+  --danger: #b91c1c;
+  --danger-soft: rgba(185, 28, 28, 0.04);
+  --danger-bd: rgba(185, 28, 28, 0.14);
+  --orb1: rgba(229, 220, 208, 0.45);
+  --orb2: rgba(242, 236, 226, 0.35);
+  --orb3: rgba(250, 246, 240, 0.75);
+  --shadow: 0 1px 3px 0 rgba(36, 30, 25, 0.06), 0 1px 2px -1px rgba(36, 30, 25, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(36, 30, 25, 0.08), 0 4px 6px -4px rgba(36, 30, 25, 0.04);
+  --dot-color: rgba(36, 30, 25, 0.04);
 }
 
 /* ══════════════════════════════════════════
@@ -94,7 +94,7 @@ body.light {
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
   color: var(--text);
   overflow-x: hidden;
