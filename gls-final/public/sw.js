@@ -35,24 +35,28 @@ self.addEventListener('fetch', (event) => {
   // Ignore non-GET requests or browser extension requests
   if (req.method !== 'GET' || !url.protocol.startsWith('http')) return
 
-  // API proxy requests: Let network handle directly
+  // API proxy requests: Let network handle directly without SW interception
   if (url.pathname.startsWith('/proxy/')) return
 
-  // For HTML navigation requests: Network first, fallback to cached index.html if firewall blocks connection
+  // For HTML navigation requests: Network first, fallback to cached index.html if offline
   if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
       fetch(req)
         .then((response) => {
-          if (response.status === 200) {
+          if (response && response.status === 200) {
             const copy = response.clone()
-            caches.open(CACHE_NAME).then((c) => c.put(req, copy))
+            caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => {})
           }
           return response
         })
         .catch(async () => {
-          const cache = await caches.open(CACHE_NAME)
-          const cached = await cache.match('/index.html') || await cache.match('/')
-          return cached || new Response('<h1>App loading...</h1>', { headers: { 'Content-Type': 'text/html' } })
+          try {
+            const cache = await caches.open(CACHE_NAME)
+            const cached = await cache.match('/index.html') || await cache.match('/')
+            return cached || new Response('<!DOCTYPE html><html><head><title>Moodle 1.1</title></head><body><div id="root"></div></body></html>', { headers: { 'Content-Type': 'text/html' } })
+          } catch (e) {
+            return new Response('<!DOCTYPE html><html><head><title>Moodle 1.1</title></head><body><div id="root"></div></body></html>', { headers: { 'Content-Type': 'text/html' } })
+          }
         })
     )
     return

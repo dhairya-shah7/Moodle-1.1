@@ -5,64 +5,110 @@ export function useMoodle() {
   const { token } = useAuth()
 
   const get = useCallback(async (fn, params = {}) => {
-    const url = new URL('/proxy/api', window.location.origin)
-    url.searchParams.set('wstoken', token)
-    url.searchParams.set('wsfunction', fn)
-    url.searchParams.set('moodlewsrestformat', 'json')
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
-    const r = await fetch(url.toString())
-    return r.json()
+    try {
+      if (!token) return { error: true, message: 'No token' }
+      const url = new URL('/proxy/api', window.location.origin)
+      url.searchParams.set('wstoken', token)
+      url.searchParams.set('wsfunction', fn)
+      url.searchParams.set('moodlewsrestformat', 'json')
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
+
+      const r = await fetch(url.toString())
+      if (!r.ok) return { error: true, status: r.status }
+      const text = await r.text()
+      try {
+        return JSON.parse(text)
+      } catch (e) {
+        console.warn(`JSON parse error for ${fn}:`, text.slice(0, 100))
+        return { error: true, message: 'Invalid JSON response' }
+      }
+    } catch (err) {
+      console.warn(`Fetch error for ${fn}:`, err.message)
+      return { error: true, message: err.message }
+    }
+  }, [token])
+
+  const post = useCallback(async (fn, bodyParams = {}) => {
+    try {
+      if (!token) return { error: true, message: 'No token' }
+      const url = new URL('/proxy/api', window.location.origin)
+      const params = new URLSearchParams()
+      params.set('wstoken', token)
+      params.set('wsfunction', fn)
+      params.set('moodlewsrestformat', 'json')
+      Object.entries(bodyParams).forEach(([k, v]) => params.set(k, v))
+
+      const r = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString()
+      })
+      if (!r.ok) return { error: true, status: r.status }
+      const text = await r.text()
+      try {
+        return JSON.parse(text)
+      } catch (e) {
+        console.warn(`JSON parse error for POST ${fn}:`, text.slice(0, 100))
+        return { error: true, message: 'Invalid JSON response' }
+      }
+    } catch (err) {
+      console.warn(`Fetch error for POST ${fn}:`, err.message)
+      return { error: true, message: err.message }
+    }
   }, [token])
 
   const getSiteInfo      = () => get('core_webservice_get_site_info')
   const getCourses       = (userId) => get('core_enrol_get_users_courses', { userid: userId })
   const getGrades        = (userId) => get('gradereport_overview_get_course_grades', { userid: userId })
-  // Faculty/admin: fetch all courses on the site
-  const getAllCourses     = () => get('core_course_get_courses')
+  const getAllCourses    = () => get('core_course_get_courses')
   const getNotifications = (userId) => get('message_popup_get_popup_notifications', { userid: userId, newestfirst: 1, limit: 20 })
 
-  // Faculty: get all student submissions for an assignment
   const getSubmissions = (assignId) =>
     get('mod_assign_get_submissions', { 'assignmentids[0]': assignId })
 
-  // Faculty: save a grade for a student submission
   const saveGrade = (assignId, userId, grade, feedback = '') => {
-    const url = new URL('/proxy/api', window.location.origin)
-    url.searchParams.set('wstoken', token)
-    url.searchParams.set('wsfunction', 'mod_assign_save_grade')
-    url.searchParams.set('moodlewsrestformat', 'json')
-    url.searchParams.set('assignmentid', assignId)
-    url.searchParams.set('userid', userId)
-    url.searchParams.set('grade', grade)
-    url.searchParams.set('attemptnumber', -1)
-    url.searchParams.set('addattempt', 0)
-    url.searchParams.set('workflowstate', 'released')
-    url.searchParams.set('applytoall', 0)
-    url.searchParams.set('plugindata[assignfeedbackcomments_editor][text]', feedback)
-    url.searchParams.set('plugindata[assignfeedbackcomments_editor][format]', 1)
-    return fetch(url.toString()).then(r => r.json())
+    return post('mod_assign_save_grade', {
+      assignmentid: assignId,
+      userid: userId,
+      grade: grade,
+      attemptnumber: -1,
+      addattempt: 0,
+      workflowstate: 'released',
+      applytoall: 0,
+      'plugindata[assignfeedbackcomments_editor][text]': feedback,
+      'plugindata[assignfeedbackcomments_editor][format]': 1,
+    })
   }
 
-  // Faculty: get enrolled students in a course
   const getEnrolledUsers = (courseId) =>
     get('core_enrol_get_enrolled_users', { courseid: courseId })
 
-  // FIX 1: Send ALL course IDs, not just first few
+  // Chunk array requests into POST batches of 6 courses max to prevent 414 URI Too Large errors on Mobile WebKit/Proxies
   const getAssignments = async (courses) => {
-    if (!courses.length) return []
-    // Build query string with all course IDs
-    const ids = courses.map((c, i) => `courseids[${i}]=${c.id}`).join('&')
-    const url = `/proxy/api?wstoken=${token}&wsfunction=mod_assign_get_assignments&moodlewsrestformat=json&${ids}`
-    const data = await fetch(url).then(r => r.json())
-    const assignments = []
-    if (data.courses) {
-      data.courses.forEach(c => {
-        ;(c.assignments || []).forEach(a => {
-          assignments.push({ ...a, courseid: c.id, coursename: c.fullname, courseshort: c.shortname })
+    if (!courses || !courses.length) return []
+    try {
+      const assignments = []
+      const chunkSize = 6
+      for (let i = 0; i < courses.length; i += chunkSize) {
+        const chunk = courses.slice(i, i + chunkSize)
+        const params = {}
+        chunk.forEach((c, idx) => {
+          params[`courseids[${idx}]`] = c.id
         })
-      })
+        const data = await post('mod_assign_get_assignments', params)
+        if (data && data.courses && Array.isArray(data.courses)) {
+          data.courses.forEach(c => {
+            ;(c.assignments || []).forEach(a => {
+              assignments.push({ ...a, courseid: c.id, coursename: c.fullname, courseshort: c.shortname })
+            })
+          })
+        }
+      }
+      return assignments.sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
+    } catch (e) {
+      console.warn('getAssignments error:', e.message)
+      return []
     }
-    return assignments.sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
   }
 
   const getSubmissionStatus = (assignId) =>
@@ -76,55 +122,48 @@ export function useMoodle() {
     })
 
   const uploadFileToDraft = async (file) => {
-    const formData = new FormData()
-    formData.append('file_1', file, file.name)
-    formData.append('token', token)
-    const resp = await fetch('/proxy/upload', { method: 'POST', body: formData })
-    return resp.json()
+    try {
+      const formData = new FormData()
+      formData.append('file_1', file, file.name)
+      formData.append('token', token)
+      const resp = await fetch('/proxy/upload', { method: 'POST', body: formData })
+      return resp.json()
+    } catch (e) {
+      return { error: e.message }
+    }
   }
 
   const saveSubmission = (assignId, itemId) => {
-    const url = new URL('/proxy/api', window.location.origin)
-    url.searchParams.set('wstoken', token)
-    url.searchParams.set('wsfunction', 'mod_assign_save_submission')
-    url.searchParams.set('moodlewsrestformat', 'json')
-    url.searchParams.set('assignmentid', assignId)
-    url.searchParams.set('plugindata[files_filemanager]', itemId)
-    return fetch(url.toString()).then(r => r.json())
+    return post('mod_assign_save_submission', {
+      assignmentid: assignId,
+      'plugindata[files_filemanager]': itemId,
+    })
   }
 
   const deleteSubmission = (assignId) => {
-    const url = new URL('/proxy/api', window.location.origin)
-    url.searchParams.set('wstoken', token)
-    url.searchParams.set('wsfunction', 'mod_assign_save_submission')
-    url.searchParams.set('moodlewsrestformat', 'json')
-    url.searchParams.set('assignmentid', assignId)
-    url.searchParams.set('plugindata[files_filemanager]', 0)
-    return fetch(url.toString()).then(r => r.json())
+    return post('mod_assign_save_submission', {
+      assignmentid: assignId,
+      'plugindata[files_filemanager]': 0,
+    })
   }
 
   const submitForGrading = (assignId) => {
-    const url = new URL('/proxy/api', window.location.origin)
-    url.searchParams.set('wstoken', token)
-    url.searchParams.set('wsfunction', 'mod_assign_submit_for_grading')
-    url.searchParams.set('moodlewsrestformat', 'json')
-    url.searchParams.set('assignmentid', assignId)
-    url.searchParams.set('acceptsubmissionstatement', 1)
-    return fetch(url.toString()).then(r => r.json())
+    return post('mod_assign_submit_for_grading', {
+      assignmentid: assignId,
+      acceptsubmissionstatement: 1,
+    })
   }
 
-  // FIX 2 & 3: Include both type=file AND type=url (Google Drive links)
   const getCourseFiles = async (courses) => {
+    if (!courses || !courses.length) return []
     const items = []
     for (const c of courses) {
       try {
-        const url = `/proxy/api?wstoken=${token}&wsfunction=core_course_get_contents&moodlewsrestformat=json&courseid=${c.id}`
-        const sections = await fetch(url).then(r => r.json())
+        const sections = await get('core_course_get_contents', { courseid: c.id })
         if (!Array.isArray(sections)) continue
         sections.forEach(sec => {
           ;(sec.modules || []).forEach(mod => {
             ;(mod.contents || []).forEach(f => {
-              // Include files (PDFs, docs etc)
               if (f.type === 'file' && f.filename && !f.filename.endsWith('/')) {
                 items.push({
                   ...f,
@@ -138,7 +177,6 @@ export function useMoodle() {
                   url: f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token,
                 })
               }
-              // FIX 3: Also include Google Drive / external URL links
               if (f.type === 'url' && f.fileurl) {
                 items.push({
                   filename: mod.name || f.filename,
@@ -152,7 +190,7 @@ export function useMoodle() {
                   sectionname: sec.name || '',
                   modname: mod.name,
                   modtype: 'url',
-                  url: f.fileurl, // external link, no token needed
+                  url: f.fileurl,
                 })
               }
             })
@@ -166,32 +204,45 @@ export function useMoodle() {
   }
 
   const getResourceFiles = async (courses) => {
-    if (!courses.length) return []
+    if (!courses || !courses.length) return []
     try {
-      const ids = courses.map((c, i) => `courseids[${i}]=${c.id}`).join('&')
-      const url = `/proxy/api?wstoken=${token}&wsfunction=mod_resource_get_resources_by_courses&moodlewsrestformat=json&${ids}`
-      const data = await fetch(url).then(r => r.json())
-      const resources = data.resources || []
+      const resources = []
+      const chunkSize = 6
       const courseMap = {}
       courses.forEach(c => { courseMap[c.id] = c })
-      return resources.map(r => {
-        const course = courseMap[r.course] || {}
-        const f = r.contentfiles?.[0] || {}
-        return {
-          filename: f.filename || r.name,
-          fileurl: f.fileurl || '',
-          filesize: f.filesize || 0,
-          timemodified: f.timemodified || r.timemodified,
-          itemType: 'file',
-          coursename: course.fullname || '',
-          courseshort: course.shortname || '',
-          courseid: r.course,
-          sectionname: '',
-          modname: r.name,
-          modtype: 'resource',
-          url: f.fileurl ? f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token : '',
+
+      for (let i = 0; i < courses.length; i += chunkSize) {
+        const chunk = courses.slice(i, i + chunkSize)
+        const params = {}
+        chunk.forEach((c, idx) => {
+          params[`courseids[${idx}]`] = c.id
+        })
+        const data = await post('mod_resource_get_resources_by_courses', params)
+        const resList = data?.resources || []
+        if (Array.isArray(resList)) {
+          resList.forEach(r => {
+            const course = courseMap[r.course] || {}
+            const f = r.contentfiles?.[0] || {}
+            if (f.fileurl) {
+              resources.push({
+                filename: f.filename || r.name,
+                fileurl: f.fileurl || '',
+                filesize: f.filesize || 0,
+                timemodified: f.timemodified || r.timemodified,
+                itemType: 'file',
+                coursename: course.fullname || '',
+                courseshort: course.shortname || '',
+                courseid: r.course,
+                sectionname: '',
+                modname: r.name,
+                modtype: 'resource',
+                url: f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token,
+              })
+            }
+          })
         }
-      }).filter(f => f.url)
+      }
+      return resources
     } catch (e) {
       console.warn('getResourceFiles error', e.message)
       return []
@@ -199,32 +250,43 @@ export function useMoodle() {
   }
 
   const getUrlResources = async (courses) => {
-    if (!courses.length) return []
+    if (!courses || !courses.length) return []
     try {
-      const ids = courses.map((c, i) => `courseids[${i}]=${c.id}`).join('&')
-      const url = `/proxy/api?wstoken=${token}&wsfunction=mod_url_get_urls_by_courses&moodlewsrestformat=json&${ids}`
-      const data = await fetch(url).then(r => r.json())
-      const urls = data.urls || []
+      const urls = []
+      const chunkSize = 6
       const courseMap = {}
       courses.forEach(c => { courseMap[c.id] = c })
-      return urls.map(u => {
-        const course = courseMap[u.course] || {}
-        return {
-          id: u.id,
-          filename: u.name,
-          fileurl: u.externalurl,
-          filesize: 0,
-          timemodified: u.timemodified,
-          itemType: 'link',
-          coursename: course.fullname || '',
-          courseshort: course.shortname || '',
-          courseid: u.course,
-          sectionname: 'General',
-          modname: u.name,
-          modtype: 'url',
-          url: u.externalurl,
+
+      for (let i = 0; i < courses.length; i += chunkSize) {
+        const chunk = courses.slice(i, i + chunkSize)
+        const params = {}
+        chunk.forEach((c, idx) => {
+          params[`courseids[${idx}]`] = c.id
+        })
+        const data = await post('mod_url_get_urls_by_courses', params)
+        const urlList = data?.urls || []
+        if (Array.isArray(urlList)) {
+          urlList.forEach(u => {
+            const course = courseMap[u.course] || {}
+            urls.push({
+              id: u.id,
+              filename: u.name,
+              fileurl: u.externalurl,
+              filesize: 0,
+              timemodified: u.timemodified,
+              itemType: 'link',
+              coursename: course.fullname || '',
+              courseshort: course.shortname || '',
+              courseid: u.course,
+              sectionname: 'General',
+              modname: u.name,
+              modtype: 'url',
+              url: u.externalurl,
+            })
+          })
         }
-      })
+      }
+      return urls
     } catch (e) {
       console.warn('getUrlResources error', e.message)
       return []
@@ -232,7 +294,7 @@ export function useMoodle() {
   }
 
   return {
-    get, token,
+    get, post, token,
     getSiteInfo, getCourses, getAllCourses, getAssignments, getGrades,
     getSubmissionStatus, getSubmissions, saveGrade, getEnrolledUsers,
     getCalendarEvents,

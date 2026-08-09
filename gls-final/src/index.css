@@ -96,10 +96,13 @@ body.light {
 body {
   font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text);
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   transition: color .3s;
   position: relative;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 
   /* deep background gradient */
   background:

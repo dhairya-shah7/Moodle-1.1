@@ -2,18 +2,40 @@ import { createContext, useContext, useState, useCallback } from 'react'
 
 const AuthContext = createContext(null)
 
+function safeGetItem(key, defaultVal = '') {
+  try {
+    return localStorage.getItem(key) ?? defaultVal
+  } catch (e) {
+    return defaultVal
+  }
+}
+
+function safeSetItem(key, val) {
+  try {
+    localStorage.setItem(key, val)
+  } catch (e) {}
+}
+
+function safeRemoveItem(key) {
+  try {
+    localStorage.removeItem(key)
+  } catch (e) {}
+}
+
 // role: 'student' | 'faculty' | 'admin'
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem('moodle_token') || '')
+  const [token, setToken] = useState(() => safeGetItem('moodle_token', ''))
   const [user, setUser]   = useState(() => {
-    const u = localStorage.getItem('moodle_user')
-    return u ? JSON.parse(u) : null
+    const u = safeGetItem('moodle_user', null)
+    if (!u) return null
+    try { return JSON.parse(u) } catch (e) { return null }
   })
-  const [role, setRole] = useState(() => localStorage.getItem('moodle_role') || 'student')
+  const [role, setRole] = useState(() => safeGetItem('moodle_role', 'student'))
   // Set of course IDs this faculty member teaches (empty for students/admin)
   const [teachingCourseIds, setTeachingCourseIds] = useState(() => {
-    const t = localStorage.getItem('moodle_teaching_ids')
-    return t ? new Set(JSON.parse(t)) : new Set()
+    const t = safeGetItem('moodle_teaching_ids', null)
+    if (!t) return new Set()
+    try { return new Set(JSON.parse(t)) } catch (e) { return new Set() }
   })
 
   const login = useCallback((tok, userInfo, detectedRole = 'student', teachingIds = []) => {
@@ -22,10 +44,10 @@ export function AuthProvider({ children }) {
     setRole(detectedRole)
     const idSet = new Set(teachingIds)
     setTeachingCourseIds(idSet)
-    localStorage.setItem('moodle_token', tok)
-    localStorage.setItem('moodle_user', JSON.stringify(userInfo))
-    localStorage.setItem('moodle_role', detectedRole)
-    localStorage.setItem('moodle_teaching_ids', JSON.stringify(teachingIds))
+    safeSetItem('moodle_token', tok)
+    safeSetItem('moodle_user', JSON.stringify(userInfo))
+    safeSetItem('moodle_role', detectedRole)
+    safeSetItem('moodle_teaching_ids', JSON.stringify(teachingIds))
   }, [])
 
   const logout = useCallback(() => {
@@ -33,10 +55,10 @@ export function AuthProvider({ children }) {
     setUser(null)
     setRole('student')
     setTeachingCourseIds(new Set())
-    localStorage.removeItem('moodle_token')
-    localStorage.removeItem('moodle_user')
-    localStorage.removeItem('moodle_role')
-    localStorage.removeItem('moodle_teaching_ids')
+    safeRemoveItem('moodle_token')
+    safeRemoveItem('moodle_user')
+    safeRemoveItem('moodle_role')
+    safeRemoveItem('moodle_teaching_ids')
   }, [])
 
   // Returns true if this faculty member teaches the given courseId

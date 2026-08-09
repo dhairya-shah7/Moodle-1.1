@@ -6,15 +6,30 @@ import { daysLeft } from '../utils/helpers'
 
 const AppDataContext = createContext(null)
 
+function safeGetCache(key) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : null
+  } catch (e) {
+    return null
+  }
+}
+
+function safeSetCache(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (e) {}
+}
+
 export function AppDataProvider({ children }) {
   const { token, user, isLoggedIn, role, teachingCourseIds } = useAuth()
   const moodle = useMoodle()
 
-  const [courses, setCourses]               = useState([])
-  const [assignments, setAssignments]       = useState([])
+  const [courses, setCourses]               = useState(() => safeGetCache(`moodle_cache_courses_${user?.userid}`) || [])
+  const [assignments, setAssignments]       = useState(() => safeGetCache(`moodle_cache_assignments_${user?.userid}`) || [])
   const [submissions, setSubmissions]       = useState({})
   const [calendarEvents, setCalendarEvents] = useState([])
-  const [files, setFiles]                   = useState([])
+  const [files, setFiles]                   = useState(() => safeGetCache(`moodle_cache_files_${user?.userid}`) || [])
   const [notifications, setNotifications]   = useState([])
   const [loading, setLoading]               = useState(false)
   const prevFileCount  = useRef(0)
@@ -47,7 +62,7 @@ export function AppDataProvider({ children }) {
     if (!user?.userid) return
     setHiddenCourseIds(prev => {
       const next = prev.includes(courseId) ? prev : [...prev, courseId]
-      localStorage.setItem(`moodle_hidden_courses_${user.userid}`, JSON.stringify(next))
+      try { localStorage.setItem(`moodle_hidden_courses_${user.userid}`, JSON.stringify(next)) } catch (e) {}
       return next
     })
   }
@@ -55,14 +70,14 @@ export function AppDataProvider({ children }) {
   const restoreAllCourses = () => {
     if (!user?.userid) return
     setHiddenCourseIds([])
-    localStorage.removeItem(`moodle_hidden_courses_${user.userid}`)
+    try { localStorage.removeItem(`moodle_hidden_courses_${user.userid}`) } catch (e) {}
   }
 
   const ignoreAssignment = (assignId) => {
     if (!user?.userid) return
     setIgnoredAssignmentIds(prev => {
       const next = prev.includes(assignId) ? prev : [...prev, assignId]
-      localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next))
+      try { localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next)) } catch (e) {}
       return next
     })
   }
@@ -71,7 +86,7 @@ export function AppDataProvider({ children }) {
     if (!user?.userid) return
     setIgnoredAssignmentIds(prev => {
       const next = prev.filter(id => id !== assignId)
-      localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next))
+      try { localStorage.setItem(`moodle_ignored_assignments_${user.userid}`, JSON.stringify(next)) } catch (e) {}
       return next
     })
   }
@@ -88,42 +103,57 @@ export function AppDataProvider({ children }) {
     }
     setSubmissions(map)
     return map
-  }, [token])
+  }, [moodle])
 
   const loadAll = useCallback(async () => {
     if (!isLoggedIn || !user?.userid) return
     setLoading(true)
     try {
-      // Faculty/admin: fetch ALL courses on the site so they can browse everything
-      // Students: only their enrolled courses
       const coursePromise = (role === 'faculty' || role === 'admin')
         ? moodle.getAllCourses()
         : moodle.getCourses(user.userid)
 
-      const [c, n, cal] = await Promise.all([
+      const [cRes, nRes, calRes] = await Promise.allSettled([
         coursePromise,
-        moodle.getNotifications(user.userid).catch(() => ({ notifications: [] })),
-        moodle.getCalendarEvents().catch(() => ({ events: [] })),
+        moodle.getNotifications(user.userid),
+        moodle.getCalendarEvents(),
       ])
-      const courseList = Array.isArray(c) ? c : []
-      setCourses(courseList)
-      setNotifications(n.notifications || [])
-      setCalendarEvents(cal.events || [])
 
-      // Filter courses for files/assignments to avoid overload on faculty/admin accounts
+      const c = cRes.status === 'fulfilled' ? cRes.value : []
+      const n = nRes.status === 'fulfilled' ? nRes.value : { notifications: [] }
+      const cal = calRes.status === 'fulfilled' ? calRes.value : { events: [] }
+
+      const courseList = Array.isArray(c) ? c : []
+      if (courseList.length > 0) {
+        setCourses(courseList)
+        safeSetCache(`moodle_cache_courses_${user.userid}`, courseList)
+      }
+
+      setNotifications(n?.notifications || [])
+      setCalendarEvents(cal?.events || [])
+
       const enrolledCourses = (role === 'faculty')
         ? courseList.filter(c => teachingCourseIds?.has(c.id) || teachingCourseIds?.has(String(c.id)))
         : (role === 'admin')
           ? courseList.slice(0, 10)
           : courseList
 
-      const [a, primaryFiles, fallbackFiles, urlFiles] = await Promise.all([
+      const [aRes, pFilesRes, fFilesRes, uFilesRes] = await Promise.allSettled([
         moodle.getAssignments(enrolledCourses),
-        moodle.getCourseFiles(enrolledCourses).catch(() => []),
-        moodle.getResourceFiles(enrolledCourses).catch(() => []),
-        moodle.getUrlResources ? moodle.getUrlResources(enrolledCourses).catch(() => []) : Promise.resolve([]),
+        moodle.getCourseFiles(enrolledCourses),
+        moodle.getResourceFiles(enrolledCourses),
+        moodle.getUrlResources ? moodle.getUrlResources(enrolledCourses) : Promise.resolve([]),
       ])
-      setAssignments(a)
+
+      const a = aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : []
+      const primaryFiles = pFilesRes.status === 'fulfilled' && Array.isArray(pFilesRes.value) ? pFilesRes.value : []
+      const fallbackFiles = fFilesRes.status === 'fulfilled' && Array.isArray(fFilesRes.value) ? fFilesRes.value : []
+      const urlFiles = uFilesRes.status === 'fulfilled' && Array.isArray(uFilesRes.value) ? uFilesRes.value : []
+
+      if (a.length > 0 || enrolledCourses.length > 0) {
+        setAssignments(a)
+        safeSetCache(`moodle_cache_assignments_${user.userid}`, a)
+      }
 
       const mergedFiles = [...primaryFiles]
       const fileUrls = new Set(primaryFiles.map(f => f.fileurl || f.url))
@@ -137,11 +167,14 @@ export function AppDataProvider({ children }) {
       fallbackFiles.forEach(addUniqueFile)
       urlFiles.forEach(addUniqueFile)
 
-      setFiles(mergedFiles)
-      prevFileCount.current = mergedFiles.length
+      if (mergedFiles.length > 0 || enrolledCourses.length > 0) {
+        setFiles(mergedFiles)
+        safeSetCache(`moodle_cache_files_${user.userid}`, mergedFiles)
+        prevFileCount.current = mergedFiles.length
+      }
 
       // Only load submission statuses for students
-      if (role === 'student') {
+      if (role === 'student' && a.length > 0) {
         await loadSubmissions(a)
         const dueToday = []
         const dueTomorrow = []
@@ -180,7 +213,7 @@ export function AppDataProvider({ children }) {
       console.error('loadAll error', e)
     }
     setLoading(false)
-  }, [isLoggedIn, user?.userid, token, role])
+  }, [isLoggedIn, user?.userid, token, role, moodle, loadSubmissions, teachingCourseIds])
 
   useEffect(() => { loadAll() }, [loadAll])
 
