@@ -1,23 +1,55 @@
 export const fmt = ts => {
   if (!ts) return 'No deadline'
   const d = new Date(ts * 1000)
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
-    ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  const hours = d.getHours()
+  const mins = d.getMinutes()
+
+  const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+
+  // If 12:00 AM (00:00 midnight), clarify that 12:00 AM on Aug 10 means Midnight tonight (end of Aug 9)
+  if (hours === 0 && mins === 0) {
+    const prevDay = new Date(d)
+    prevDay.setDate(prevDay.getDate() - 1)
+    const prevStr = prevDay.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+    return `${dateStr}, 12:00 am (Midnight - Night of ${prevStr})`
+  }
+
+  return `${dateStr}, ${timeStr}`
 }
 
 export const daysLeft = ts => {
   if (!ts) return Infinity
-  return Math.ceil((ts * 1000 - Date.now()) / 86400000)
+  const diff = ts * 1000 - Date.now()
+  if (diff < 0) {
+    return Math.floor(diff / 86400000)
+  }
+  return Math.floor(diff / 86400000)
 }
 
 export const truncate = (str, n) => str && str.length > n ? str.slice(0, n) + '…' : str
 
 export const assignStatus = a => {
-  const d = daysLeft(a.duedate)
   if (!a.duedate) return { cls: 'ok', tag: 'No deadline', tagCls: 'tag-ok', filterKey: 'none' }
-  if (d < 0) return { cls: 'overdue', tag: 'Overdue', tagCls: 'tag-overdue', filterKey: 'overdue' }
-  if (d <= 7) return { cls: 'soon', tag: `${d}d left`, tagCls: 'tag-soon', filterKey: 'soon' }
-  return { cls: 'ok', tag: `${d}d left`, tagCls: 'tag-ok', filterKey: 'ok' }
+  const now = Date.now()
+  const dueMs = a.duedate * 1000
+  const diff = dueMs - now
+
+  if (diff < 0) return { cls: 'overdue', tag: 'Overdue', tagCls: 'tag-overdue', filterKey: 'overdue' }
+
+  const hoursLeft = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (hoursLeft < 1) {
+    return { cls: 'soon', tag: 'Due <1h', tagCls: 'tag-soon', filterKey: 'soon' }
+  }
+  if (hoursLeft < 24) {
+    return { cls: 'soon', tag: `Due ${hoursLeft}h`, tagCls: 'tag-soon', filterKey: 'soon' }
+  }
+  if (days <= 7) {
+    return { cls: 'soon', tag: `${days}d left`, tagCls: 'tag-soon', filterKey: 'soon' }
+  }
+  return { cls: 'ok', tag: `${days}d left`, tagCls: 'tag-ok', filterKey: 'ok' }
 }
 
 export const fileIcon = name => {

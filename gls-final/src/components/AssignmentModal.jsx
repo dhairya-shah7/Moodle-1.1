@@ -354,12 +354,16 @@ export default function AssignmentModal({ assignment, onClose }) {
 
   if (!assignment) return null
 
+  const diff = assignment.duedate ? (assignment.duedate * 1000 - Date.now()) : null
+  const hoursLeft = diff !== null ? Math.floor(diff / 3600000) : null
   const d = daysLeft(assignment.duedate)
+
   const timeRemaining = !assignment.duedate ? 'No deadline'
-    : d < 0 ? `${Math.abs(d)} day(s) late`
-      : d === 0 ? 'Due today!'
-        : `${d} day(s) remaining`
-  const timeColor = d < 0 ? 'var(--danger)' : d <= 3 ? 'var(--warning)' : 'var(--success)'
+    : diff < 0 ? `${Math.abs(d)} day(s) late`
+      : hoursLeft < 1 ? 'Due in <1 hour!'
+        : hoursLeft < 24 ? `Due in ${hoursLeft} hour(s) (Today!)`
+          : `${d} day(s) remaining`
+  const timeColor = diff < 0 ? 'var(--danger)' : hoursLeft <= 24 ? 'var(--warning)' : 'var(--success)'
 
   return createPortal(
     <div
