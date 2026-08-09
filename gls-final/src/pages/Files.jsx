@@ -247,7 +247,6 @@ export default function Files() {
           <div className="page-title">{selectedCourseName || 'Faculty Files'}</div>
           <div className="page-sub" style={{ marginBottom: 0 }}>All course materials — grouped by subject and section</div>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{getFormattedDate()}</div>
       </div>
 
       {/* Stats + controls */}

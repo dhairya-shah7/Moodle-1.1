@@ -504,8 +504,6 @@ body::before {
 
 .stat-card {
   background: var(--surface);
-
-
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px;
@@ -513,6 +511,16 @@ body::before {
   overflow: hidden;
   transition: all .25s;
   box-shadow: var(--shadow);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stat-card:active {
+  transform: scale(0.98);
 }
 
 /* coloured top stripe — appears on hover */
@@ -1556,11 +1564,24 @@ input::-webkit-credentials-auto-fill-button {
     grid-template-columns: 1fr;
     gap: 12px;
   }
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .stat-card {
+    aspect-ratio: 1 / 1;
+    padding: 14px;
+  }
 }
 
 @media (max-width: 480px) {
   .stats-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .stat-card {
+    aspect-ratio: 1 / 1;
+    padding: 12px;
   }
 }
 

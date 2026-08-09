@@ -61,7 +61,6 @@ export default function Assignments() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div className="page-title">Assignments</div>
-            <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{getFormattedDate()}</div>
           </div>
           <div className="page-sub">Track and manage your academic submissions</div>
         </div>

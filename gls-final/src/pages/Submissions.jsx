@@ -72,7 +72,6 @@ export default function Submissions() {
           <div className="page-title">Grading Center</div>
           <div className="page-sub">Evaluate assignment submissions and provide feedback to students</div>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{getFormattedDate()}</div>
       </div>
 
       <div className="submissions-layout">

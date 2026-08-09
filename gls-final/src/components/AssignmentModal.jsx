@@ -38,63 +38,65 @@ const loadScriptWithFallbacks = async (urls) => {
 }
 
 const getJSZip = async () => {
-  if (window.JSZip) return window.JSZip
+  if (typeof window.JSZip === 'function') return window.JSZip
   try {
     const mod = await import('jszip')
-    return mod.default || mod
+    let zip = mod.default || mod
+    if (typeof zip !== 'function' && zip?.JSZip && typeof zip.JSZip === 'function') {
+      zip = zip.JSZip
+    }
+    if (typeof zip === 'function') return zip
   } catch (err) {
     console.warn('Failed to load local JSZip module, trying CDN fallbacks...', err)
-    await loadScriptWithFallbacks([
-      'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-      'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
-      'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
-    ])
-    return window.JSZip
   }
+  await loadScriptWithFallbacks([
+    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+    'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+    'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
+  ])
+  return typeof window.JSZip === 'function' ? window.JSZip : null
 }
 
 const getPdfjs = async () => {
-  if (window.pdfjsLib) {
-    if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+  let pdfjs = window.pdfjsLib
+  if (!pdfjs) {
+    try {
+      const mod = await import('pdfjs-dist')
+      pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
+    } catch (err) {
+      console.warn('Failed to load local pdfjs module, trying CDN fallbacks...', err)
+      await loadScriptWithFallbacks([
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+      ])
+      pdfjs = window.pdfjsLib
     }
-    return window.pdfjsLib
   }
-  try {
-    const mod = await import('pdfjs-dist')
-    const pdfjs = mod.default || mod
-    if (pdfjs.GlobalWorkerOptions) {
-      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker
-    }
-    return pdfjs
-  } catch (err) {
-    console.warn('Failed to load local pdfjs module, trying CDN fallbacks...', err)
-    await loadScriptWithFallbacks([
-      'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.min.mjs',
-      'https://unpkg.com/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs',
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js'
-    ])
-    if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/build/pdf.worker.min.mjs'
-    }
-    return window.pdfjsLib
+  if (pdfjs && pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
   }
+  return pdfjs
 }
 
 const getJsPDF = async () => {
-  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF
-  if (window.jsPDF) return window.jsPDF
+  if (typeof window.jspdf?.jsPDF === 'function') return window.jspdf.jsPDF
+  if (typeof window.jsPDF === 'function') return window.jsPDF
   try {
     const mod = await import('jspdf')
-    return mod.jsPDF || mod.default?.jsPDF || mod.default
+    let ctor = mod.jsPDF || mod.default?.jsPDF || mod.default
+    if (typeof ctor !== 'function' && ctor?.jsPDF && typeof ctor.jsPDF === 'function') {
+      ctor = ctor.jsPDF
+    }
+    if (typeof ctor === 'function') return ctor
   } catch (err) {
     console.warn('Failed to load local jsPDF module, trying CDN fallbacks...', err)
-    await loadScriptWithFallbacks([
-      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-      'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
-    ])
-    return window.jspdf?.jsPDF || window.jsPDF
   }
+  await loadScriptWithFallbacks([
+    'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+  ])
+  if (typeof window.jspdf?.jsPDF === 'function') return window.jspdf.jsPDF
+  if (typeof window.jsPDF === 'function') return window.jsPDF
+  return null
 }
 
 const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
@@ -332,7 +334,11 @@ export default function AssignmentModal({ assignment, onClose }) {
       if (!itemId) throw new Error('No item ID returned from upload')
 
       await moodle.saveSubmission(assignment.id, itemId)
-      const submitResult = await moodle.submitForGrading(assignment.id)
+      try {
+        await moodle.submitForGrading(assignment.id)
+      } catch (submitErr) {
+        console.warn('submitForGrading non-fatal warning:', submitErr)
+      }
 
       await refreshSubmission(assignment.id)
       setUploadDone(true)

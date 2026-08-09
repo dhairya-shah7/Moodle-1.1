@@ -20,7 +20,6 @@ export default function Courses() {
             <div className="page-sub">{semMatch ? `${semMatch[0]} — All Courses` : 'All enrolled courses'}</div>
           </div>
         </div>
-        <div style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 500 }}>{getFormattedDate()}</div>
       </div>
 
       {loading ? (

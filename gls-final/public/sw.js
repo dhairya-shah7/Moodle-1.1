@@ -63,19 +63,24 @@ self.addEventListener('fetch', (event) => {
     caches.match(req).then((cached) => {
       if (cached) {
         fetch(req).then((res) => {
-          if (res.status === 200) {
+          if (res && res.status === 200) {
             caches.open(CACHE_NAME).then((c) => c.put(req, res))
           }
         }).catch(() => {})
         return cached
       }
       return fetch(req).then((res) => {
-        if (res.status === 200 && (url.pathname.includes('/assets/') || url.origin !== location.origin)) {
+        if (res && res.status === 200 && (url.pathname.includes('/assets/') || url.origin !== location.origin)) {
           const copy = res.clone()
           caches.open(CACHE_NAME).then((c) => c.put(req, copy))
         }
         return res
+      }).catch((err) => {
+        console.warn('ServiceWorker fetch blocked or offline:', req.url, err)
+        return new Response('', { status: 408, statusText: 'Fetch Failed' })
       })
+    }).catch(() => {
+      return fetch(req).catch(() => new Response('', { status: 408 }))
     })
   )
 })
