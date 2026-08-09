@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { 
   X, XCircle, CheckCircle2, Clock, FileText, 
-  BarChart3, FileSpreadsheet, Paperclip, File, 
+  BarChart3, FileSpreadsheet, Paperclip, File as FileIcon, 
   UploadCloud, AlertTriangle, Loader2, Pencil
 } from 'lucide-react'
 import { useMoodle } from '../hooks/useMoodle'
@@ -150,7 +150,7 @@ const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
   }
 
   const compressedBlob = doc.output('blob')
-  return new File([compressedBlob], file.name.replace(/\.pdf$/i, '_compressed.pdf'), {
+  return new window.File([compressedBlob], file.name.replace(/\.pdf$/i, '_compressed.pdf'), {
     type: 'application/pdf'
   })
 }
@@ -233,7 +233,7 @@ const compressDOCX = async (file) => {
   }
 
   const compressedBlob = await zip.generateAsync({ type: 'blob' })
-  return new File([compressedBlob], file.name.replace(/\.docx$/i, '_compressed.docx'), {
+  return new window.File([compressedBlob], file.name.replace(/\.docx$/i, '_compressed.docx'), {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   })
 }
@@ -481,7 +481,7 @@ export default function AssignmentModal({ assignment, onClose }) {
                   toast.loading('Renaming file...', { id: 'rename' })
                   const res = await fetch(viewUrl)
                   const blob = await res.blob()
-                  const renamedFile = new File([blob], newName, { type: blob.type })
+                  const renamedFile = new window.File([blob], newName, { type: blob.type })
                   const uploadResult = await moodle.uploadFileToDraft(renamedFile)
                   const itemId = uploadResult[0]?.itemid
                   if (!itemId) throw new Error('Failed to create draft')
@@ -515,7 +515,7 @@ export default function AssignmentModal({ assignment, onClose }) {
 
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, marginBottom: 6, border: '1px solid var(--border)' }}>
-                  <File size={20} style={{ color: 'var(--accent)' }} />
+                  <FileIcon size={20} style={{ color: 'var(--accent)' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {viewerUrl ? (
                       <a href={viewerUrl} target="_blank" rel="noreferrer"
@@ -561,7 +561,7 @@ export default function AssignmentModal({ assignment, onClose }) {
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-              {selectedFile ? <File size={28} className="text-success" /> : <UploadCloud size={28} style={{ color: 'var(--text3)' }} />}
+              {selectedFile ? <FileIcon size={28} className="text-success" /> : <UploadCloud size={28} style={{ color: 'var(--text3)' }} />}
             </div>
             {selectedFile ? (
               <>

@@ -525,31 +525,39 @@ export default function Dashboard() {
 
       <div className="stats-grid">
         <div className="stat-card" onClick={() => navigate('/courses')} role="button" tabIndex={0}>
-          <div className="stat-icon-wrap blue"><GraduationCap size={20} /></div>
-          <div>
-            <div className="stat-label">Courses</div>
+          <div className="stat-card-top">
+            <div className="stat-icon-wrap blue"><GraduationCap size={20} /></div>
+          </div>
+          <div className="stat-card-body">
             <div className="stat-value blue">{courses.length || '—'}</div>
+            <div className="stat-label">Courses</div>
           </div>
         </div>
         <div className="stat-card" onClick={() => navigate('/assignments', { state: { filter: 'pending' } })} role="button" tabIndex={0}>
-          <div className="stat-icon-wrap cyan"><Clock size={20} /></div>
-          <div>
-            <div className="stat-label">Pending</div>
+          <div className="stat-card-top">
+            <div className="stat-icon-wrap cyan"><Clock size={20} /></div>
+          </div>
+          <div className="stat-card-body">
             <div className="stat-value cyan">{loading ? '—' : pending.length}</div>
+            <div className="stat-label">Pending</div>
           </div>
         </div>
         <div className="stat-card" onClick={() => navigate('/assignments', { state: { filter: 'soon' } })} role="button" tabIndex={0}>
-          <div className="stat-icon-wrap orange"><AlertCircle size={20} /></div>
-          <div>
-            <div className="stat-label">Due Soon</div>
+          <div className="stat-card-top">
+            <div className="stat-icon-wrap orange"><AlertCircle size={20} /></div>
+          </div>
+          <div className="stat-card-body">
             <div className="stat-value orange">{loading ? '—' : soon.length}</div>
+            <div className="stat-label">Due Soon</div>
           </div>
         </div>
         <div className="stat-card" onClick={() => navigate('/files')} role="button" tabIndex={0}>
-          <div className="stat-icon-wrap purple"><Files size={20} /></div>
-          <div>
-            <div className="stat-label">Files</div>
+          <div className="stat-card-top">
+            <div className="stat-icon-wrap purple"><Files size={20} /></div>
+          </div>
+          <div className="stat-card-body">
             <div className="stat-value purple">{files.length || '—'}</div>
+            <div className="stat-label">Files</div>
           </div>
         </div>
       </div>
