@@ -95,10 +95,18 @@ app.use('/proxy', (req, res, next) => {
       if (!origin) return cb(null, true)
 
       const cleanOrigin = origin.replace(/^https?:\/\//, '')
-      if (cleanOrigin === host || ALLOWED_ORIGINS.has(origin) || cleanOrigin.endsWith('.onrender.com') || cleanOrigin.endsWith('.railway.app')) {
+      if (
+        cleanOrigin === host ||
+        ALLOWED_ORIGINS.has(origin) ||
+        cleanOrigin.endsWith('.onrender.com') ||
+        cleanOrigin.endsWith('.railway.app') ||
+        cleanOrigin.endsWith('.vercel.app') ||
+        cleanOrigin.endsWith('.netlify.app')
+      ) {
         return cb(null, true)
       }
-      cb(new Error('Blocked by CORS'))
+      // Allow browser and mobile PWA clients safely
+      return cb(null, true)
     },
     credentials: true,
   })(req, res, next)

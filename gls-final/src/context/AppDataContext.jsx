@@ -113,22 +113,14 @@ export function AppDataProvider({ children }) {
         ? moodle.getAllCourses()
         : moodle.getCourses(user.userid)
 
-      const [cRes, nRes, calRes] = await Promise.allSettled([
-        coursePromise,
-        moodle.getNotifications(user.userid),
-        moodle.getCalendarEvents(),
+      const [c, n, cal] = await Promise.all([
+        coursePromise.catch(err => { console.warn('getCourses error:', err); return [] }),
+        moodle.getNotifications(user.userid).catch(() => ({ notifications: [] })),
+        moodle.getCalendarEvents().catch(() => ({ events: [] })),
       ])
 
-      const c = cRes.status === 'fulfilled' ? cRes.value : []
-      const n = nRes.status === 'fulfilled' ? nRes.value : { notifications: [] }
-      const cal = calRes.status === 'fulfilled' ? calRes.value : { events: [] }
-
       const courseList = Array.isArray(c) ? c : []
-      if (courseList.length > 0) {
-        setCourses(courseList)
-        safeSetCache(`moodle_cache_courses_${user.userid}`, courseList)
-      }
-
+      setCourses(courseList)
       setNotifications(n?.notifications || [])
       setCalendarEvents(cal?.events || [])
 
@@ -138,25 +130,18 @@ export function AppDataProvider({ children }) {
           ? courseList.slice(0, 10)
           : courseList
 
-      const [aRes, pFilesRes, fFilesRes, uFilesRes] = await Promise.allSettled([
-        moodle.getAssignments(enrolledCourses),
-        moodle.getCourseFiles(enrolledCourses),
-        moodle.getResourceFiles(enrolledCourses),
-        moodle.getUrlResources ? moodle.getUrlResources(enrolledCourses) : Promise.resolve([]),
+      const [a, primaryFiles, fallbackFiles, urlFiles] = await Promise.all([
+        moodle.getAssignments(enrolledCourses).catch(() => []),
+        moodle.getCourseFiles(enrolledCourses).catch(() => []),
+        moodle.getResourceFiles(enrolledCourses).catch(() => []),
+        moodle.getUrlResources ? moodle.getUrlResources(enrolledCourses).catch(() => []) : Promise.resolve([]),
       ])
 
-      const a = aRes.status === 'fulfilled' && Array.isArray(aRes.value) ? aRes.value : []
-      const primaryFiles = pFilesRes.status === 'fulfilled' && Array.isArray(pFilesRes.value) ? pFilesRes.value : []
-      const fallbackFiles = fFilesRes.status === 'fulfilled' && Array.isArray(fFilesRes.value) ? fFilesRes.value : []
-      const urlFiles = uFilesRes.status === 'fulfilled' && Array.isArray(uFilesRes.value) ? uFilesRes.value : []
+      const assignmentList = Array.isArray(a) ? a : []
+      setAssignments(assignmentList)
 
-      if (a.length > 0 || enrolledCourses.length > 0) {
-        setAssignments(a)
-        safeSetCache(`moodle_cache_assignments_${user.userid}`, a)
-      }
-
-      const mergedFiles = [...primaryFiles]
-      const fileUrls = new Set(primaryFiles.map(f => f.fileurl || f.url))
+      const mergedFiles = [...(Array.isArray(primaryFiles) ? primaryFiles : [])]
+      const fileUrls = new Set(mergedFiles.map(f => f.fileurl || f.url))
       const addUniqueFile = (f) => {
         const key = f.fileurl || f.url
         if (key && !fileUrls.has(key)) {
@@ -164,22 +149,18 @@ export function AppDataProvider({ children }) {
           fileUrls.add(key)
         }
       }
-      fallbackFiles.forEach(addUniqueFile)
-      urlFiles.forEach(addUniqueFile)
+      if (Array.isArray(fallbackFiles)) fallbackFiles.forEach(addUniqueFile)
+      if (Array.isArray(urlFiles)) urlFiles.forEach(addUniqueFile)
 
-      if (mergedFiles.length > 0 || enrolledCourses.length > 0) {
-        setFiles(mergedFiles)
-        safeSetCache(`moodle_cache_files_${user.userid}`, mergedFiles)
-        prevFileCount.current = mergedFiles.length
-      }
+      setFiles(mergedFiles)
+      prevFileCount.current = mergedFiles.length
 
-      // Only load submission statuses for students
-      if (role === 'student' && a.length > 0) {
-        await loadSubmissions(a)
+      if (role === 'student' && assignmentList.length > 0) {
+        await loadSubmissions(assignmentList)
         const dueToday = []
         const dueTomorrow = []
 
-        a.forEach(assign => {
+        assignmentList.forEach(assign => {
           if (toastedIds.current.has(assign.id)) return
           const d = daysLeft(assign.duedate)
           if (d === 0) {
@@ -211,8 +192,9 @@ export function AppDataProvider({ children }) {
       }
     } catch (e) {
       console.error('loadAll error', e)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [isLoggedIn, user?.userid, token, role, moodle, loadSubmissions, teachingCourseIds])
 
   useEffect(() => { loadAll() }, [loadAll])
