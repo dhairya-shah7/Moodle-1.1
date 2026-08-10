@@ -471,6 +471,58 @@ async function getTopLeaderboard() {
     .slice(0, 5)
 }
 
+async function getUserHighScore(username) {
+  if (!username) return 0
+  const cleanName = String(username).replace(/[^a-zA-Z0-9_\-\s]/g, '').trim().slice(0, 20)
+  if (!cleanName) return 0
+  const targetLower = cleanName.toLowerCase()
+
+  if (isMongoConnected) {
+    try {
+      const topRecord = await Score.findOne({
+        username: { $regex: new RegExp('^' + cleanName + '$', 'i') }
+      }).sort({ score: -1 })
+      if (topRecord && typeof topRecord.score === 'number') {
+        return topRecord.score
+      }
+    } catch (err) {
+      console.error('MongoDB getUserHighScore failed, falling back to local file:', err)
+    }
+  }
+
+  let localList = []
+  try {
+    if (fs.existsSync(leaderboardFilePath)) {
+      localList = JSON.parse(fs.readFileSync(leaderboardFilePath, 'utf8'))
+    }
+  } catch (e) {}
+
+  let maxScore = 0
+  localList.forEach(item => {
+    if (item && item.name && item.name.toLowerCase() === targetLower) {
+      if (typeof item.score === 'number' && item.score > maxScore) {
+        maxScore = item.score
+      }
+    }
+  })
+
+  return maxScore
+}
+
+app.get('/proxy/dino/user-highscore', async (req, res) => {
+  try {
+    const username = typeof req.query.username === 'string' ? req.query.username : ''
+    if (!username) {
+      return res.status(400).json({ error: 'Username required' })
+    }
+    const highScore = await getUserHighScore(username)
+    res.json({ username, highScore })
+  } catch (e) {
+    console.error('Error fetching user highscore:', e)
+    res.status(500).json({ error: 'Failed to fetch user highscore' })
+  }
+})
+
 app.get('/proxy/dino/leaderboard', async (req, res) => {
   try {
     const currentLeaderboard = await getTopLeaderboard()
@@ -533,7 +585,8 @@ app.post('/proxy/dino/score', dinoLimiter, async (req, res) => {
     }
 
     const currentLeaderboard = await getTopLeaderboard()
-    res.json({ success: true, leaderboard: currentLeaderboard })
+    const userHighScore = await getUserHighScore(cleanName)
+    res.json({ success: true, leaderboard: currentLeaderboard, personalBest: userHighScore })
   } catch (e) {
     console.error('Error submitting score:', e)
     res.status(500).json({ error: 'Failed to submit score' })

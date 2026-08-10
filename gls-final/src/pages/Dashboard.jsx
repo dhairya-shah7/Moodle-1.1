@@ -105,6 +105,29 @@ function DinoGame({ user }) {
     }
   }
 
+  const fetchUserHighScore = async (username) => {
+    if (!username) return
+    try {
+      const res = await fetch(`/proxy/dino/user-highscore?username=${encodeURIComponent(username)}`)
+      if (res.ok) {
+        const data = await res.json()
+        const dbScore = parseInt(data?.highScore || '0', 10)
+        if (dbScore > 0) {
+          setHighScore(prev => {
+            const best = Math.max(prev, dbScore)
+            try {
+              const key = `moodle_dino_high_score_${username}`
+              localStorage.setItem(key, String(best))
+            } catch (e) {}
+            return best
+          })
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch user high score:', e)
+    }
+  }
+
   const submitScore = async (username, newScore) => {
     if (!username) return
     try {
@@ -117,6 +140,16 @@ function DinoGame({ user }) {
         const data = await res.json()
         if (data.leaderboard) {
           setLeaderboard(data.leaderboard)
+        }
+        if (data.personalBest && typeof data.personalBest === 'number') {
+          setHighScore(prev => {
+            const best = Math.max(prev, data.personalBest)
+            try {
+              const key = `moodle_dino_high_score_${username}`
+              localStorage.setItem(key, String(best))
+            } catch (e) {}
+            return best
+          })
         }
       }
     } catch (e) {
@@ -131,15 +164,13 @@ function DinoGame({ user }) {
   }, [])
 
   useEffect(() => {
-    try {
-      const key = user?.username ? `moodle_dino_high_score_${user.username}` : 'moodle_dino_high_score'
-      const saved = parseInt(localStorage.getItem(key) || localStorage.getItem('moodle_dino_high_score') || '0')
-      setHighScore(saved)
-      if (user?.username && saved > 0) {
-        submitScore(user.username, saved)
-      }
-    } catch (e) {
-      setHighScore(0)
+    if (user?.username) {
+      try {
+        const key = `moodle_dino_high_score_${user.username}`
+        const saved = parseInt(localStorage.getItem(key) || localStorage.getItem('moodle_dino_high_score') || '0', 10)
+        setHighScore(saved)
+      } catch (e) {}
+      fetchUserHighScore(user.username)
     }
   }, [user?.username])
 
