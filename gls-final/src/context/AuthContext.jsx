@@ -22,7 +22,7 @@ function safeRemoveItem(key) {
   } catch (e) {}
 }
 
-// role: 'student' | 'faculty' | 'admin'
+// role: 'student' | 'faculty'
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => safeGetItem('moodle_token', ''))
   const [user, setUser]   = useState(() => {
@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     try { return JSON.parse(u) } catch (e) { return null }
   })
   const [role, setRole] = useState(() => safeGetItem('moodle_role', 'student'))
-  // Set of course IDs this faculty member teaches (empty for students/admin)
+  // Set of course IDs this faculty member teaches (empty for students)
   const [teachingCourseIds, setTeachingCourseIds] = useState(() => {
     const t = safeGetItem('moodle_teaching_ids', null)
     if (!t) return new Set()
@@ -41,12 +41,13 @@ export function AuthProvider({ children }) {
   const login = useCallback((tok, userInfo, detectedRole = 'student', teachingIds = []) => {
     setToken(tok)
     setUser(userInfo)
-    setRole(detectedRole)
+    const validRole = (detectedRole === 'faculty' && teachingIds.length > 0) ? 'faculty' : 'student'
+    setRole(validRole)
     const idSet = new Set(teachingIds)
     setTeachingCourseIds(idSet)
     safeSetItem('moodle_token', tok)
     safeSetItem('moodle_user', JSON.stringify(userInfo))
-    safeSetItem('moodle_role', detectedRole)
+    safeSetItem('moodle_role', validRole)
     safeSetItem('moodle_teaching_ids', JSON.stringify(teachingIds))
   }, [])
 
@@ -63,16 +64,14 @@ export function AuthProvider({ children }) {
 
   // Returns true if this faculty member teaches the given courseId
   const canEditCourse = useCallback((courseId) => {
-    if (user?.issiteadmin) return true
     if (teachingCourseIds.size > 0) return teachingCourseIds.has(Number(courseId)) || teachingCourseIds.has(String(courseId))
     return false
-  }, [user, teachingCourseIds])
+  }, [teachingCourseIds])
 
-  // Verify role against user profile flags to prevent DevTools localStorage tampering
-  const verifiedRole = user?.issiteadmin ? 'admin' : (teachingCourseIds.size > 0 && role === 'faculty' ? 'faculty' : (role === 'admin' && !user?.issiteadmin ? 'student' : role))
-  const isAdmin = !!(user?.issiteadmin || (verifiedRole === 'admin' && user?.issiteadmin))
-  const isFaculty = isAdmin || (verifiedRole === 'faculty' && teachingCourseIds.size > 0)
-  const isStudent = !isAdmin && !isFaculty
+  // Strictly verify role against actual faculty teaching credentials to prevent DevTools/Burp tampering
+  const verifiedRole = (teachingCourseIds.size > 0 && role === 'faculty') ? 'faculty' : 'student'
+  const isFaculty = verifiedRole === 'faculty'
+  const isStudent = !isFaculty
 
   return (
     <AuthContext.Provider value={{ 
@@ -84,7 +83,6 @@ export function AuthProvider({ children }) {
       logout, 
       isLoggedIn: !!token, 
       canEditCourse,
-      isAdmin,
       isFaculty,
       isStudent,
     }}>

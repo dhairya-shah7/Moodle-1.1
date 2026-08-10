@@ -40,32 +40,26 @@ export default function Login() {
         console.warn('Failed to fetch full user details', e)
       }
 
-      // Step 3: detect role
+      // Step 3: detect role (student vs faculty)
       let detectedRole = 'student'
       let teachingIds = []
 
-      if (info.issiteadmin) {
-        detectedRole = 'admin'
-      } else {
-        // Get courses this user is enrolled in
-        const courses = await fetch(`/proxy/api?wstoken=${tok}&wsfunction=core_enrol_get_users_courses&moodlewsrestformat=json&userid=${info.userid}`).then(r => r.json())
-        if (Array.isArray(courses)) {
-          // Check each course's role for this user
-          // Moodle returns roles array per course
-          const facultyCourses = courses.filter(c => {
-            const roles = c.roles || []
-            // editingteacher = 3, teacher (non-editing) = 4 in default Moodle
-            return roles.some(role =>
-              role.shortname === 'editingteacher' ||
-              role.shortname === 'teacher' ||
-              role.roleid === 3 ||
-              role.roleid === 4
-            )
-          })
-          if (facultyCourses.length > 0) {
-            detectedRole = 'faculty'
-            teachingIds = facultyCourses.map(c => c.id)
-          }
+      // Get courses this user is enrolled in
+      const courses = await fetch(`/proxy/api?wstoken=${tok}&wsfunction=core_enrol_get_users_courses&moodlewsrestformat=json&userid=${info.userid}`).then(r => r.json())
+      if (Array.isArray(courses)) {
+        // Check each course's role for this user
+        const facultyCourses = courses.filter(c => {
+          const roles = c.roles || []
+          return roles.some(role =>
+            role.shortname === 'editingteacher' ||
+            role.shortname === 'teacher' ||
+            role.roleid === 3 ||
+            role.roleid === 4
+          )
+        })
+        if (facultyCourses.length > 0) {
+          detectedRole = 'faculty'
+          teachingIds = facultyCourses.map(c => c.id)
         }
       }
 

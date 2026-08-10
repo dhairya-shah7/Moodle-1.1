@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppDataContext'
 
 export default function CourseCard({ course }) {
-  const { canEditCourse, isFaculty, isAdmin } = useAuth()
+  const { canEditCourse, isFaculty } = useAuth()
   const { hideCourse } = useAppData()
   const navigate = useNavigate()
   const pct = course.progress ? Math.round(course.progress) : 0
@@ -78,7 +78,7 @@ export default function CourseCard({ course }) {
           <ExternalLink size={12} />
         </button>
 
-        {/* Faculty/Admin Edit badge */}
+        {/* Faculty Edit badge */}
         {canEdit && (
           <span
             onClick={openEdit}
@@ -90,7 +90,7 @@ export default function CourseCard({ course }) {
         )}
 
         {/* View-only badge for faculty browsing non-own courses */}
-        {(isFaculty || isAdmin) && !canEdit && (
+        {isFaculty && !canEdit && (
           <span style={{ background: 'rgba(100,116,139,0.1)', color: 'var(--text3)', fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <Eye size={12} /> View only
           </span>

@@ -39,7 +39,6 @@ const NAV_BY_ROLE = {
       { to: '/grades', icon: Trophy, label: 'My Grades' },
       { to: '/profile', icon: User, label: 'Profile' },
       { to: 'https://btech.glsmoodle.in/user/preferences.php', icon: Settings, label: 'Moodle Prefs', external: true },
-      { to: '/debug', icon: Search, label: 'Diagnostics', adminOnly: true },
     ],
   },
   faculty: {
@@ -55,24 +54,6 @@ const NAV_BY_ROLE = {
       { to: '/grades', icon: Trophy, label: 'Gradebook' },
       { to: '/profile', icon: User, label: 'Profile' },
       { to: 'https://btech.glsmoodle.in/user/preferences.php', icon: Settings, label: 'Moodle Prefs', external: true },
-      { to: '/debug', icon: Search, label: 'Diagnostics', adminOnly: true },
-    ],
-  },
-  admin: {
-    primary: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/courses', icon: BookOpen, label: 'Courses' },
-      { to: '/assignments', icon: FileText, label: 'Assignments' },
-      { to: '/submissions', icon: Inbox, label: 'Submissions' },
-    ],
-    more: [
-      { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
-      { to: '/notifications', icon: Bell, label: 'Notifications', badgeKey: 'notif' },
-      { to: '/grades', icon: Trophy, label: 'Gradebook' },
-      { to: '/profile', icon: User, label: 'Profile' },
-      { to: '/admin', icon: Settings, label: 'Site Admin' },
-      { to: 'https://btech.glsmoodle.in/user/preferences.php', icon: Settings, label: 'Moodle Prefs', external: true },
-      { to: '/debug', icon: Search, label: 'Diagnostics', adminOnly: true },
     ],
   },
 }
@@ -80,11 +61,10 @@ const NAV_BY_ROLE = {
 const ROLE_COLORS = {
   student: { bg: 'rgba(16,185,129,0.15)', color: '#10b981', label: 'Student' },
   faculty: { bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', label: 'Faculty' },
-  admin: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Admin' },
 }
 
 export default function Sidebar({ badges = {} }) {
-  const { user, logout, isAdmin, isFaculty } = useAuth()
+  const { user, logout, isFaculty } = useAuth()
   const { isDark, toggle } = useTheme()
   const navigate = useNavigate()
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -160,10 +140,10 @@ export default function Sidebar({ badges = {} }) {
   const initials = (user?.lastname || user?.fullname || 'U')[0].toUpperCase()
   const dispName = truncate(user?.fullname || user?.lastname || '', 20)
   const dispId = truncate(user?.username || '', 18)
-  const roleKey = isAdmin ? 'admin' : isFaculty ? 'faculty' : 'student'
+  const roleKey = isFaculty ? 'faculty' : 'student'
   const navSet = NAV_BY_ROLE[roleKey]
   const roleStyle = ROLE_COLORS[roleKey] || ROLE_COLORS.student
-  const visibleMoreItems = navSet.more.filter((item) => !item.adminOnly || isAdmin)
+  const visibleMoreItems = navSet.more
 
   return (
     <>

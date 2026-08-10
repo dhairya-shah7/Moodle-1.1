@@ -109,7 +109,7 @@ export function AppDataProvider({ children }) {
     if (!isLoggedIn || !user?.userid) return
     setLoading(true)
     try {
-      const coursePromise = (role === 'faculty' || role === 'admin')
+      const coursePromise = (role === 'faculty')
         ? moodle.getAllCourses()
         : moodle.getCourses(user.userid)
 
@@ -126,9 +126,7 @@ export function AppDataProvider({ children }) {
 
       const enrolledCourses = (role === 'faculty')
         ? courseList.filter(c => teachingCourseIds?.has(c.id) || teachingCourseIds?.has(String(c.id)))
-        : (role === 'admin')
-          ? courseList.slice(0, 10)
-          : courseList
+        : courseList
 
       const [a, primaryFiles, fallbackFiles, urlFiles] = await Promise.all([
         moodle.getAssignments(enrolledCourses).catch(() => []),
@@ -207,7 +205,7 @@ export function AppDataProvider({ children }) {
     if (!isLoggedIn) return
     const interval = setInterval(async () => {
       try {
-        const coursePromise = (role === 'faculty' || role === 'admin')
+        const coursePromise = (role === 'faculty')
           ? moodle.getAllCourses()
           : moodle.getCourses(user.userid)
         const c = await coursePromise
@@ -215,9 +213,7 @@ export function AppDataProvider({ children }) {
 
         const enrolledCourses = (role === 'faculty')
           ? courseList.filter(c => teachingCourseIds?.has(c.id) || teachingCourseIds?.has(String(c.id)))
-          : (role === 'admin')
-            ? courseList.slice(0, 10)
-            : courseList
+          : courseList
 
         const [primaryFiles, fallbackFiles, urlFiles] = await Promise.all([
           moodle.getCourseFiles(enrolledCourses).catch(() => []),

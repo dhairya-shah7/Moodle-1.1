@@ -12,11 +12,9 @@ import Assignments from './pages/Assignments'
 import Files from './pages/Files'
 import CalendarPage from './pages/Calendar'
 import Notifications from './pages/Notifications'
-import Debug from './pages/Debug'
-import Submissions from './pages/Submissions'
-import Admin from './pages/Admin'
 import Profile from './pages/Profile'
 import Grades from './pages/Grades'
+import Submissions from './pages/Submissions'
 
 function ProtectedRoute({ children }) {
   const { isLoggedIn } = useAuth()
@@ -27,13 +25,6 @@ function FacultyRoute({ children }) {
   const { isLoggedIn, isFaculty } = useAuth()
   if (!isLoggedIn) return <Navigate to="/" replace />
   if (!isFaculty) return <Navigate to="/dashboard" replace />
-  return children
-}
-
-function AdminRoute({ children }) {
-  const { isLoggedIn, isAdmin } = useAuth()
-  if (!isLoggedIn) return <Navigate to="/" replace />
-  if (!isAdmin) return <Navigate to="/dashboard" replace />
   return children
 }
 
@@ -61,13 +52,10 @@ function AppLayout() {
           <Route path="/files" element={<ProtectedRoute><Files /></ProtectedRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-          <Route path="/debug" element={<AdminRoute><Debug /></AdminRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/grades" element={<ProtectedRoute><Grades /></ProtectedRoute>} />
           {/* Faculty-only */}
           <Route path="/submissions" element={<FacultyRoute><Submissions /></FacultyRoute>} />
-          {/* Admin-only */}
-          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </div>
