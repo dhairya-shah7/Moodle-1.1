@@ -12,9 +12,33 @@ import Assignments from './pages/Assignments'
 import Files from './pages/Files'
 import CalendarPage from './pages/Calendar'
 import Notifications from './pages/Notifications'
+import Component, { Component as ReactComponent } from 'react'
 import Profile from './pages/Profile'
 import Grades from './pages/Grades'
 import Submissions from './pages/Submissions'
+import NotFound from './pages/NotFound'
+
+class ErrorBoundary extends ReactComponent {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[CRITICAL SYSTEM RECOVERY]', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <NotFound error={this.state.error} isCrash={true} />
+    }
+    return this.props.children
+  }
+}
 
 function ProtectedRoute({ children }) {
   const { isLoggedIn } = useAuth()
@@ -56,7 +80,7 @@ function AppLayout() {
           <Route path="/grades" element={<ProtectedRoute><Grades /></ProtectedRoute>} />
           {/* Faculty-only */}
           <Route path="/submissions" element={<FacultyRoute><Submissions /></FacultyRoute>} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
 
@@ -118,10 +142,12 @@ function InnerApp() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <InnerApp />
-      </AuthProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthProvider>
+          <InnerApp />
+        </AuthProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
