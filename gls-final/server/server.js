@@ -218,7 +218,7 @@ const upload = multer({
 })
 
 // ══════════════════════════════════════════
-// 4. ALLOWED MOODLE FUNCTIONS (whitelist)
+// 4. ALLOWED MOODLE FUNCTIONS & PARAMETERS WHITELIST
 // ══════════════════════════════════════════
 const ALLOWED_FUNCTIONS = new Set([
   'core_webservice_get_site_info',
@@ -239,6 +239,61 @@ const ALLOWED_FUNCTIONS = new Set([
   'message_popup_get_popup_notifications',
   'gradereport_overview_get_course_grades',
 ])
+
+const ALLOWED_PARAM_KEYS = new Set([
+  'wstoken',
+  'wsfunction',
+  'moodlewsrestformat',
+  'userid',
+  'courseid',
+  'courseids',
+  'assignmentids',
+  'field',
+  'values',
+  'timesortfrom',
+  'events',
+  'section',
+  'cmid',
+  'itemid',
+  'filearea',
+  'assignmentid',
+  'plugingroup',
+  'plugin',
+  'submission',
+  'grade',
+  'gradingstatus'
+])
+
+function isWhitelistedParamKey(key) {
+  if (!key || typeof key !== 'string') return false
+  if (ALLOWED_PARAM_KEYS.has(key)) return true
+  // Match array parameter formats like courseids[0], values[0], assignmentids[12]
+  const baseKey = key.replace(/\[\d+\]$/, '')
+  return ALLOWED_PARAM_KEYS.has(baseKey)
+}
+
+function sanitizeParams(rawParamsObj) {
+  const cleanParams = new URLSearchParams()
+  if (!rawParamsObj || typeof rawParamsObj !== 'object') return cleanParams
+
+  for (const [key, val] of Object.entries(rawParamsObj)) {
+    if (!isWhitelistedParamKey(key)) {
+      console.warn(`[SECURITY] Stripped unauthorized query/body parameter: '${key}'`)
+      continue
+    }
+
+    if (Array.isArray(val)) {
+      val.forEach((item, idx) => {
+        const itemKey = key.includes('[') ? key : `${key}[${idx}]`
+        cleanParams.append(itemKey, String(item))
+      })
+    } else if (val !== undefined && val !== null) {
+      cleanParams.append(key, String(val))
+    }
+  }
+
+  return cleanParams
+}
 
 // ══════════════════════════════════════════
 // 5. TOKEN VALIDATION MIDDLEWARE
@@ -273,7 +328,7 @@ function requireAllowedFunction(req, res, next) {
 // ── Token login (rate-limited & cluster-bombing protected)
 app.post('/proxy/token', loginLimiter, async (req, res) => {
   try {
-    const { username, password } = req.body
+    const { username, password } = req.body || {}
     if (typeof username !== 'string' || typeof password !== 'string') {
       return res.status(400).json({ error: 'Invalid payload structure' })
     }
@@ -293,10 +348,18 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
       return res.status(429).json({ error: 'Account temporarily locked due to multiple failed login attempts. Try again in 15 minutes.' })
     }
 
+    const bodyParams = new URLSearchParams()
+    bodyParams.append('username', cleanUser)
+    bodyParams.append('password', cleanPass)
+    bodyParams.append('service', 'moodle_mobile_app')
+
     const r = await fetch(`${MOODLE}/login/token.php`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `username=${encodeURIComponent(cleanUser)}&password=${encodeURIComponent(cleanPass)}&service=moodle_mobile_app`,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Moodle1.1-Proxy/1.0'
+      },
+      body: bodyParams.toString(),
     })
     const data = await r.json()
     console.log('[TOKEN]', data.token ? '✅ OK' : '❌ Failed')
@@ -312,15 +375,21 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
   }
 })
 
-// ── Moodle REST API proxy (GET) — rate-limited, token-validated, function-whitelisted
+// ── Moodle REST API proxy (GET) — rate-limited, token-validated, function-whitelisted, param-sanitized
 app.get('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (req, res) => {
   try {
-    const rawQuery = req.url.replace('/proxy/api?', '')
     const fn = req.query.wsfunction || 'unknown'
-    const r = await fetch(`${MOODLE}/webservice/rest/server.php?${rawQuery}`)
+    const cleanParams = sanitizeParams(req.query)
+    const r = await fetch(`${MOODLE}/webservice/rest/server.php?${cleanParams.toString()}`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Moodle1.1-Proxy/1.0',
+        'Accept': 'application/json'
+      }
+    })
     const data = await r.json()
     const isErr = data?.exception || data?.errorcode
-    console.log(`[API] ${fn}`, isErr ? '❌ ' + (data.message || data.errorcode) : '✅ OK')
+    console.log(`[API GET] ${fn}`, isErr ? '❌ ' + (data.message || data.errorcode) : '✅ OK')
     res.json(data)
   } catch (e) {
     console.log('[API ERROR]', e.message)
@@ -328,15 +397,21 @@ app.get('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (r
   }
 })
 
-// ── Moodle REST API proxy (POST) — rate-limited, token-validated, function-whitelisted
+// ── Moodle REST API proxy (POST) — rate-limited, token-validated, function-whitelisted, param-sanitized
 app.post('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (req, res) => {
   try {
-    const params = new URLSearchParams({ ...req.query, ...req.body })
-    const fn = params.get('wsfunction') || 'unknown'
+    const fn = req.query.wsfunction || req.body?.wsfunction || 'unknown'
+    const combined = { ...req.query, ...req.body }
+    const cleanParams = sanitizeParams(combined)
+
     const r = await fetch(`${MOODLE}/webservice/rest/server.php`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Moodle1.1-Proxy/1.0',
+        'Accept': 'application/json'
+      },
+      body: cleanParams.toString(),
     })
     const data = await r.json()
     const isErr = data?.exception || data?.errorcode
@@ -350,10 +425,13 @@ app.post('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (
 // ── Support FAQ feedback email proxy (hides target email from clients)
 app.post('/proxy/feedback', apiLimiter, requireToken, async (req, res) => {
   try {
-    const { username, message } = req.body
-    if (!message) {
+    const { username, message } = req.body || {}
+    if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message content is required' })
     }
+
+    const cleanName = String(username || 'Anonymous').replace(/[^a-zA-Z0-9_@.\- ]/g, '').slice(0, 30)
+    const cleanMessage = message.trim().slice(0, 2000)
 
     const r = await fetch('https://formsubmit.co/ajax/free243456@gmail.com', {
       method: 'POST',
@@ -365,8 +443,8 @@ app.post('/proxy/feedback', apiLimiter, requireToken, async (req, res) => {
         'Origin': 'https://formsubmit.co'
       },
       body: JSON.stringify({
-        'Roll Number': username || 'Anonymous',
-        'Feedback / Inquiry': message,
+        'Roll Number': cleanName,
+        'Feedback / Inquiry': cleanMessage,
         '_captcha': 'false'
       }),
     })
@@ -384,7 +462,7 @@ app.post('/proxy/feedback', apiLimiter, requireToken, async (req, res) => {
 // ── File upload — rate-limited, token-required
 app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
   try {
-    const token = req.body.token || req.query.token
+    const token = req.body?.token || req.query?.token
     if (!token || !/^[a-f0-9]{32}$/i.test(token)) {
       return res.status(401).json({ error: 'Invalid token' })
     }
@@ -402,10 +480,13 @@ app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
     })
 
     console.log('[UPLOAD] file:', req.files[0]?.originalname, req.files[0]?.size, 'bytes')
-    const r = await fetch(`${MOODLE}/webservice/upload.php?token=${token}`, {
+    const r = await fetch(`${MOODLE}/webservice/upload.php?token=${encodeURIComponent(token)}`, {
       method: 'POST',
       body: form,
-      headers: form.getHeaders(),
+      headers: {
+        ...form.getHeaders(),
+        'User-Agent': 'Moodle1.1-Proxy/1.0'
+      },
     })
     const data = await r.json()
     console.log('[UPLOAD RESULT]', JSON.stringify(data).slice(0, 200))
