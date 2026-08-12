@@ -439,15 +439,15 @@ body::before {
    MAIN CONTENT
 ══════════════════════════════════════════ */
 .main-content {
-  margin-left: 0;
-  padding: 16px 32px 140px;
+  margin: 0 auto;
+  padding: 24px 40px 140px;
   flex: 1;
   min-height: 100vh;
   position: relative;
   z-index: 1;
-  max-width: 1280px;
+  max-width: 1600px;
   width: 100%;
-  margin-right: auto;
+  box-sizing: border-box;
 }
 
 /* ══════════════════════════════════════════
@@ -619,9 +619,10 @@ body::before {
 ══════════════════════════════════════════ */
 .courses-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
   margin-bottom: 28px;
+  width: 100%;
 }
 
 @property --angle {
