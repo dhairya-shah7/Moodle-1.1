@@ -123,11 +123,10 @@ export function AppDataProvider({ children }) {
       const courseList = Array.isArray(c) ? c : []
       if (courseList.length > 0) safeSetCache(`moodle_cache_courses_${uid}`, courseList)
       
-      let currentCourses = courseList
-      if (courseList.length === 0) {
-        currentCourses = safeGetCache(`moodle_cache_courses_${uid}`) || []
-      }
-      setCourses(prev => currentCourses.length > 0 ? currentCourses : prev)
+      let currentCourses = courseList.length > 0
+        ? courseList
+        : (safeGetCache(`moodle_cache_courses_${uid}`) || courses || [])
+      setCourses(currentCourses)
       setNotifications(n?.notifications || [])
       setCalendarEvents(cal?.events || [])
 
@@ -145,11 +144,10 @@ export function AppDataProvider({ children }) {
       const assignmentList = Array.isArray(a) ? a : []
       if (assignmentList.length > 0) safeSetCache(`moodle_cache_assignments_${uid}`, assignmentList)
       
-      let currentAssignments = assignmentList
-      if (assignmentList.length === 0) {
-        currentAssignments = safeGetCache(`moodle_cache_assignments_${uid}`) || []
-      }
-      setAssignments(prev => currentAssignments.length > 0 ? currentAssignments : prev)
+      let currentAssignments = assignmentList.length > 0
+        ? assignmentList
+        : (safeGetCache(`moodle_cache_assignments_${uid}`) || assignments || [])
+      setAssignments(currentAssignments)
 
       const mergedFiles = [...(Array.isArray(primaryFiles) ? primaryFiles : [])]
       const fileUrls = new Set(mergedFiles.map(f => f.fileurl || f.url))
@@ -165,11 +163,10 @@ export function AppDataProvider({ children }) {
 
       if (mergedFiles.length > 0) safeSetCache(`moodle_cache_files_${uid}`, mergedFiles)
       
-      let currentFiles = mergedFiles
-      if (mergedFiles.length === 0) {
-        currentFiles = safeGetCache(`moodle_cache_files_${uid}`) || []
-      }
-      setFiles(prev => currentFiles.length > 0 ? currentFiles : prev)
+      let currentFiles = mergedFiles.length > 0
+        ? mergedFiles
+        : (safeGetCache(`moodle_cache_files_${uid}`) || files || [])
+      setFiles(currentFiles)
       prevFileCount.current = currentFiles.length
 
       if (role === 'student' && currentAssignments.length > 0) {
