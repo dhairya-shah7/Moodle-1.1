@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bot, X, Send, Sparkles, RefreshCw, Download, FileText, CheckCircle, Clock, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Bot, X, Send, Sparkles, RefreshCw, Download, FileText, CheckCircle, Clock, Trash2, ExternalLink } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
 import { processAssistantQuery } from '../utils/assistantEngine'
 
@@ -25,6 +26,7 @@ export default function AssistantWidget() {
   const [input, setInput] = useState('')
   const dataContext = useAppData()
   const chatEndRef = useRef(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (isOpen) {
@@ -53,6 +55,23 @@ export default function AssistantWidget() {
 
     setMessages(prev => [...prev, userMsg, botMsg])
     setInput('')
+  }
+
+  const handleItemClick = (item) => {
+    if (item.type === 'assignment' && item.id) {
+      setIsOpen(false)
+      navigate('/assignments', { state: { openAssignmentId: item.id } })
+    } else if (item.type === 'file') {
+      if (item.url) {
+        window.open(item.url, '_blank', 'noopener,noreferrer')
+      } else {
+        setIsOpen(false)
+        navigate('/files')
+      }
+    } else if (item.type === 'course' && item.id) {
+      setIsOpen(false)
+      navigate('/courses')
+    }
   }
 
   const handleKeyDown = (e) => {
@@ -237,62 +256,71 @@ export default function AssistantWidget() {
                       {msg.response.items && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                           {msg.response.items.map(item => (
-                            <div key={item.id} style={{
-                              padding: '8px 10px',
-                              background: 'var(--surface3)',
-                              border: '1px solid var(--border)',
-                              borderRadius: 10,
-                              fontSize: 12,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: 8
-                            }}>
+                            <div 
+                              key={item.id} 
+                              onClick={() => handleItemClick(item)}
+                              style={{
+                                padding: '9px 12px',
+                                background: 'var(--surface3)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 12,
+                                fontSize: 12,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                userSelect: 'none'
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.borderColor = 'var(--accent)'
+                                e.currentTarget.style.transform = 'translateY(-1px)'
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.borderColor = 'var(--border)'
+                                e.currentTarget.style.transform = 'translateY(0)'
+                              }}
+                            >
                               <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {item.title}
                                 </div>
-                                <div style={{ fontSize: 10, color: 'var(--text2)' }}>
+                                <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>
                                   {item.subtitle}
                                 </div>
                               </div>
 
                               {item.badge && (
                                 <span style={{
-                                  padding: '2px 6px',
-                                  borderRadius: 6,
+                                  padding: '2px 8px',
+                                  borderRadius: 8,
                                   fontSize: 10,
                                   fontWeight: 700,
-                                  background: item.badge.includes('Overdue') || item.badge.includes('Today') ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                  color: item.badge.includes('Overdue') || item.badge.includes('Today') ? '#ef4444' : '#3b82f6',
+                                  background: item.badge.includes('Overdue') || item.badge.includes('Today') ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                                  color: item.badge.includes('Overdue') || item.badge.includes('Today') ? '#ef4444' : '#f59e0b',
                                   flexShrink: 0
                                 }}>
                                   {item.badge}
                                 </span>
                               )}
 
-                              {item.url && (
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    padding: '4px 8px',
-                                    borderRadius: 6,
-                                    background: 'var(--accent)',
-                                    color: '#fff',
-                                    fontSize: 10,
-                                    fontWeight: 600,
-                                    textDecoration: 'none',
-                                    flexShrink: 0,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 2
-                                  }}
-                                >
-                                  <Download size={11} /> Open
-                                </a>
-                              )}
+                              <span
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: 6,
+                                  background: 'var(--accent)',
+                                  color: '#fff',
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  flexShrink: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4
+                                }}
+                              >
+                                {item.type === 'file' ? <Download size={11} /> : <ExternalLink size={11} />} Open
+                              </span>
                             </div>
                           ))}
                         </div>
