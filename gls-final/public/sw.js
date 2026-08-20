@@ -1,4 +1,4 @@
-const CACHE_NAME = 'moodle-dashboard-v2'
+const CACHE_NAME = 'moodle-dashboard-v3-clean'
 const ASSETS = [
   '/',
   '/index.html',
@@ -35,8 +35,8 @@ self.addEventListener('fetch', (event) => {
   // Ignore non-GET requests or browser extension requests
   if (req.method !== 'GET' || !url.protocol.startsWith('http')) return
 
-  // API proxy requests: Let network handle directly without SW interception
-  if (url.pathname.startsWith('/proxy/')) return
+  // NEVER intercept API proxy requests, Moodle requests, or wstoken calls
+  if (url.pathname.includes('/proxy') || url.pathname.includes('api') || url.search.includes('wstoken')) return
 
   // For HTML navigation requests: Network first, fallback to cached index.html if offline
   if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
@@ -79,13 +79,8 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((c) => c.put(req, copy))
         }
         return res
-      }).catch((err) => {
-        console.warn('ServiceWorker fetch blocked or offline:', req.url, err)
-        return new Response('', { status: 408, statusText: 'Fetch Failed' })
-      })
-    }).catch(() => {
-      return fetch(req).catch(() => new Response('', { status: 408 }))
-    })
+      }).catch(() => fetch(req))
+    }).catch(() => fetch(req))
   )
 })
 
