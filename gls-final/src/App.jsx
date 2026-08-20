@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import React, { Component, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster, ToastBar, toast } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -12,13 +12,12 @@ import Assignments from './pages/Assignments'
 import Files from './pages/Files'
 import CalendarPage from './pages/Calendar'
 import Notifications from './pages/Notifications'
-import Component, { Component as ReactComponent } from 'react'
 import Profile from './pages/Profile'
 import Grades from './pages/Grades'
 import Submissions from './pages/Submissions'
 import NotFound from './pages/NotFound'
 
-class ErrorBoundary extends ReactComponent {
+class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
     this.state = { hasError: false, error: null }
