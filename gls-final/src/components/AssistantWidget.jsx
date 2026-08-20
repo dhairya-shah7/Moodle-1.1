@@ -116,11 +116,12 @@ export default function AssistantWidget() {
       {isOpen && (
         <div style={{
           position: 'fixed',
-          bottom: 136,
+          bottom: 80,
           right: 20,
           width: 'calc(100vw - 40px)',
           maxWidth: 380,
-          height: 480,
+          height: 'min(460px, calc(100vh - 100px))',
+          maxHeight: 'calc(100vh - 100px)',
           background: 'var(--surface)',
           border: '1px solid var(--border)',
           borderRadius: 24,
