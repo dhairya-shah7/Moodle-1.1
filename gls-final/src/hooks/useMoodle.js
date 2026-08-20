@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 
 async function fetchWithTimeout(resource, options = {}, timeoutMs = 12000) {
@@ -58,16 +58,16 @@ export function useMoodle() {
     }
   }, [token])
 
-  const getSiteInfo      = () => get('core_webservice_get_site_info')
-  const getCourses       = (userId) => get('core_enrol_get_users_courses', { userid: userId })
-  const getGrades        = (userId) => get('gradereport_overview_get_course_grades', { userid: userId })
-  const getAllCourses    = () => get('core_course_get_courses')
-  const getNotifications = (userId) => get('message_popup_get_popup_notifications', { userid: userId, newestfirst: 1, limit: 20 })
+  const getSiteInfo      = useCallback(() => get('core_webservice_get_site_info'), [get])
+  const getCourses       = useCallback((userId) => get('core_enrol_get_users_courses', { userid: userId }), [get])
+  const getGrades        = useCallback((userId) => get('gradereport_overview_get_course_grades', { userid: userId }), [get])
+  const getAllCourses    = useCallback(() => get('core_course_get_courses'), [get])
+  const getNotifications = useCallback((userId) => get('message_popup_get_popup_notifications', { userid: userId, newestfirst: 1, limit: 20 }), [get])
 
-  const getSubmissions = (assignId) =>
-    get('mod_assign_get_submissions', { 'assignmentids[0]': assignId })
+  const getSubmissions = useCallback((assignId) =>
+    get('mod_assign_get_submissions', { 'assignmentids[0]': assignId }), [get])
 
-  const saveGrade = (assignId, userId, grade, feedback = '') => {
+  const saveGrade = useCallback((assignId, userId, grade, feedback = '') => {
     const url = new URL('/proxy/api', window.location.origin)
     url.searchParams.set('wstoken', token)
     url.searchParams.set('wsfunction', 'mod_assign_save_grade')
@@ -82,13 +82,13 @@ export function useMoodle() {
     url.searchParams.set('plugindata[assignfeedbackcomments_editor][text]', feedback)
     url.searchParams.set('plugindata[assignfeedbackcomments_editor][format]', 1)
     return safeJsonFetch(url.toString())
-  }
+  }, [token])
 
-  const getEnrolledUsers = (courseId) =>
-    get('core_enrol_get_enrolled_users', { courseid: courseId })
+  const getEnrolledUsers = useCallback((courseId) =>
+    get('core_enrol_get_enrolled_users', { courseid: courseId }), [get])
 
   // Chunk array requests into GET batches of 8 courses per query string to prevent 414 URI Too Large errors on Mobile WebKit/Proxies while keeping native Moodle URL array format
-  const getAssignments = async (courses) => {
+  const getAssignments = useCallback(async (courses) => {
     if (!courses || !courses.length) return []
     try {
       const assignments = []
@@ -122,19 +122,19 @@ export function useMoodle() {
       console.warn('getAssignments error:', e.message)
       return []
     }
-  }
+  }, [token])
 
-  const getSubmissionStatus = (assignId) =>
-    get('mod_assign_get_submission_status', { assignid: assignId })
+  const getSubmissionStatus = useCallback((assignId) =>
+    get('mod_assign_get_submission_status', { assignid: assignId }), [get])
 
-  const getCalendarEvents = () =>
+  const getCalendarEvents = useCallback(() =>
     get('core_calendar_get_action_events_by_timesort', {
       timesortfrom: Math.floor(Date.now() / 1000) - 60 * 60 * 24 * 7,
       timesortto:   Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 90,
       limitnum: 150,
-    })
+    }), [get])
 
-  const uploadFileToDraft = async (file) => {
+  const uploadFileToDraft = useCallback(async (file) => {
     try {
       const formData = new FormData()
       formData.append('file_1', file, file.name)
@@ -150,9 +150,9 @@ export function useMoodle() {
     } catch (e) {
       return { error: e.message }
     }
-  }
+  }, [token])
 
-  const saveSubmission = (assignId, itemId) => {
+  const saveSubmission = useCallback((assignId, itemId) => {
     const url = new URL('/proxy/api', window.location.origin)
     url.searchParams.set('wstoken', token)
     url.searchParams.set('wsfunction', 'mod_assign_save_submission')
@@ -160,9 +160,9 @@ export function useMoodle() {
     url.searchParams.set('assignmentid', assignId)
     url.searchParams.set('plugindata[files_filemanager]', itemId)
     return safeJsonFetch(url.toString())
-  }
+  }, [token])
 
-  const deleteSubmission = (assignId) => {
+  const deleteSubmission = useCallback((assignId) => {
     const url = new URL('/proxy/api', window.location.origin)
     url.searchParams.set('wstoken', token)
     url.searchParams.set('wsfunction', 'mod_assign_save_submission')
@@ -170,9 +170,9 @@ export function useMoodle() {
     url.searchParams.set('assignmentid', assignId)
     url.searchParams.set('plugindata[files_filemanager]', 0)
     return safeJsonFetch(url.toString())
-  }
+  }, [token])
 
-  const submitForGrading = (assignId) => {
+  const submitForGrading = useCallback((assignId) => {
     const url = new URL('/proxy/api', window.location.origin)
     url.searchParams.set('wstoken', token)
     url.searchParams.set('wsfunction', 'mod_assign_submit_for_grading')
@@ -180,10 +180,9 @@ export function useMoodle() {
     url.searchParams.set('assignmentid', assignId)
     url.searchParams.set('acceptsubmissionstatement', 1)
     return safeJsonFetch(url.toString())
-  }
+  }, [token])
 
-  // Fast parallel fetching for course contents
-  const getCourseFiles = async (courses) => {
+  const getCourseFiles = useCallback(async (courses) => {
     if (!courses || !courses.length) return []
     const items = []
     await Promise.all(
@@ -233,9 +232,9 @@ export function useMoodle() {
       })
     )
     return items
-  }
+  }, [token])
 
-  const getResourceFiles = async (courses) => {
+  const getResourceFiles = useCallback(async (courses) => {
     if (!courses || !courses.length) return []
     try {
       const resources = []
@@ -286,9 +285,9 @@ export function useMoodle() {
       console.warn('getResourceFiles error', e.message)
       return []
     }
-  }
+  }, [token])
 
-  const getUrlResources = async (courses) => {
+  const getUrlResources = useCallback(async (courses) => {
     if (!courses || !courses.length) return []
     try {
       const urls = []
@@ -337,14 +336,21 @@ export function useMoodle() {
       console.warn('getUrlResources error', e.message)
       return []
     }
-  }
+  }, [token])
 
-  return {
+  return useMemo(() => ({
     get, token,
     getSiteInfo, getCourses, getAllCourses, getAssignments, getGrades,
     getSubmissionStatus, getSubmissions, saveGrade, getEnrolledUsers,
     getCalendarEvents,
     uploadFileToDraft, saveSubmission, deleteSubmission, submitForGrading,
     getCourseFiles, getResourceFiles, getUrlResources, getNotifications,
-  }
+  }), [
+    get, token,
+    getSiteInfo, getCourses, getAllCourses, getAssignments, getGrades,
+    getSubmissionStatus, getSubmissions, saveGrade, getEnrolledUsers,
+    getCalendarEvents,
+    uploadFileToDraft, saveSubmission, deleteSubmission, submitForGrading,
+    getCourseFiles, getResourceFiles, getUrlResources, getNotifications,
+  ])
 }
