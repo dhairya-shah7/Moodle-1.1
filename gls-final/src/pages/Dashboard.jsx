@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Layout, Book, Clock, AlertCircle, FileCheck, CheckCircle2, Sparkles, Files, GraduationCap, Calendar, FileText } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
-import { truncate, daysLeft, getFormattedDate, fmt } from '../utils/helpers'
+import { truncate, daysLeft, getFormattedDate, fmt, isAssignmentSubmitted } from '../utils/helpers'
 import AssignmentItem from '../components/AssignmentItem'
 import Spinner from '../components/Spinner'
 import { useNavigate } from 'react-router-dom'
@@ -534,15 +534,12 @@ export default function Dashboard() {
 
   const pending = assignments
     .filter(a => !ignoredAssignmentIds.includes(a.id))
-    .filter(a => {
-      const sub = submissions[a.id]
-      return sub?.lastattempt?.submission?.status !== 'submitted'
-    })
+    .filter(a => !isAssignmentSubmitted(submissions[a.id], a))
 
   const upcoming = assignments
     .filter(a => !ignoredAssignmentIds.includes(a.id))
     .filter(a => a.duedate && daysLeft(a.duedate) >= 0)
-    .filter(a => submissions[a.id]?.lastattempt?.submission?.status !== 'submitted')
+    .filter(a => !isAssignmentSubmitted(submissions[a.id], a))
     .slice(0, 5)
 
   return (

@@ -1035,8 +1035,18 @@ app.all('/proxy/*', (req, res) => {
   res.status(404).json({ error: 'Unknown endpoint' })
 })
 
-// Serve built React frontend
-app.use(express.static(path.join(__dirname, '../dist')))
+// Serve built React frontend with no-cache headers for index.html and JS assets
+app.use(express.static(path.join(__dirname, '../dist'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
+    }
+  }
+}))
 
 // Catch-all: send React app for any non-API route (React Router support)
 app.get('*', (req, res) => {

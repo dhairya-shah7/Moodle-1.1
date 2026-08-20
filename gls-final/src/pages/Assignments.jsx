@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Send, AlertCircle, Clock, CheckCircle2, PartyPopper, Calendar, Filter, ChevronRight, Search, EyeOff } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
-import { fmt, daysLeft, assignStatus, getFormattedDate } from '../utils/helpers'
+import { fmt, daysLeft, assignStatus, getFormattedDate, isAssignmentSubmitted } from '../utils/helpers'
 import AssignmentModal from '../components/AssignmentModal'
 import Spinner from '../components/Spinner'
 
@@ -31,16 +31,16 @@ export default function Assignments() {
     }
   }, [location.state, assignments])
 
-  const getSubStatus = (a) => {
+  const checkSubmitted = (a) => {
     const sub = submissions[a.id]
-    return sub?.lastattempt?.submission?.status || 'new'
+    return isAssignmentSubmitted(sub, a)
   }
 
   const filtered = assignments.filter(a => {
     const s = assignStatus(a)
-    const subStatus = getSubStatus(a)
+    const submitted = checkSubmitted(a)
     const isIgnored = ignoredAssignmentIds.includes(a.id)
-    const isPending = subStatus !== 'submitted' && !isIgnored
+    const isPending = !submitted && !isIgnored
     
     // Search match
     const searchMatch = !search || a.name.toLowerCase().includes(search.toLowerCase()) || (a.courseshort && a.courseshort.toLowerCase().includes(search.toLowerCase()))
@@ -48,7 +48,7 @@ export default function Assignments() {
 
     if (filter === 'all') return true
     if (filter === 'pending') return isPending
-    if (filter === 'submitted') return subStatus === 'submitted'
+    if (filter === 'submitted') return submitted
     if (filter === 'overdue') return s.filterKey === 'overdue' && isPending
     if (filter === 'soon') return s.filterKey === 'soon' && isPending
     if (filter === 'ignored') return isIgnored

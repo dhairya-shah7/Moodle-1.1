@@ -24,10 +24,22 @@ export const daysLeft = ts => {
   if (diff < 0) {
     return Math.floor(diff / 86400000)
   }
-  return Math.floor(diff / 86400000)
 }
-
 export const truncate = (str, n) => str && str.length > n ? str.slice(0, n) + '…' : str
+
+export const isAssignmentSubmitted = (sub, assign) => {
+  if (!sub && !assign) return false
+  const status1 = sub?.lastattempt?.submission?.status
+  const status2 = sub?.submission?.status
+  const status3 = sub?.lastattempt?.teamsubmission?.status
+  const status4 = sub?.teamsubmission?.status
+  const status5 = sub?.status
+  const status6 = assign?.submissionstatus
+  const status7 = sub?.lastattempt?.submissionstatus
+  
+  const allStatuses = [status1, status2, status3, status4, status5, status6, status7].filter(Boolean).map(s => String(s).toLowerCase())
+  return allStatuses.some(s => s === 'submitted' || s === 'reopened' || s === 'graded')
+}
 
 export const assignStatus = a => {
   if (!a.duedate) return { cls: 'ok', tag: 'No deadline', tagCls: 'tag-ok', filterKey: 'none' }

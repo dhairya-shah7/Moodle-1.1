@@ -1,4 +1,4 @@
-import { daysLeft, fmt as formatDeadline } from './helpers'
+import { daysLeft, fmt as formatDeadline, isAssignmentSubmitted } from './helpers'
 
 export function processAssistantQuery(userQuery = '', dataContext = {}) {
   const q = String(userQuery).toLowerCase().trim()
@@ -20,10 +20,9 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
   } = dataContext
 
   // Helper: check if assignment is submitted
-  const isSubmitted = (assignId) => {
+  const isSubmitted = (assignId, assignObj) => {
     const sub = submissions[assignId]
-    const status = sub?.lastattempt?.submission?.status
-    return status === 'submitted'
+    return isAssignmentSubmitted(sub, assignObj)
   }
 
   // ── 1. Ignored Assignments Query
@@ -52,7 +51,7 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
   if (q.includes('remain') || q.includes('pending') || q.includes('todo') || q.includes('incomplete') || q.includes('what to do')) {
     const pendingList = assignments.filter(a => {
       if (ignoredAssignmentIds.includes(a.id)) return false
-      return !isSubmitted(a.id)
+      return !isSubmitted(a.id, a)
     }).sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
 
     if (pendingList.length === 0) {
@@ -88,7 +87,7 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
       return nameMatch || courseMatch
     })
 
-    const targetList = matchedAssignments.length > 0 ? matchedAssignments : assignments.filter(a => !isSubmitted(a.id))
+    const targetList = matchedAssignments.length > 0 ? matchedAssignments : assignments.filter(a => !isSubmitted(a.id, a))
     if (targetList.length === 0) {
       return {
         text: "No upcoming deadlines found matching your request.",
@@ -102,7 +101,7 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
         id: a.id,
         title: a.name,
         subtitle: `${a.coursename || 'Course'} — Due ${formatDeadline(a.duedate)}`,
-        badge: isSubmitted(a.id) ? 'Submitted' : 'Pending',
+        badge: isSubmitted(a.id, a) ? 'Submitted' : 'Pending',
         type: 'assignment'
       })),
       type: 'list'
