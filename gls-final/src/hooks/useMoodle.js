@@ -28,7 +28,21 @@ async function safeJsonFetch(url, options = {}, timeoutMs = 12000) {
       return { error: true, message: 'Empty response body' }
     }
     try {
-      return JSON.parse(text)
+      const data = JSON.parse(text)
+      if (data && (data.errorcode === 'invalidtoken' || data.message === 'Invalid token - token not found')) {
+        console.warn('Stale/invalid Moodle token detected. Clearing session.')
+        try {
+          localStorage.removeItem('moodle_token')
+          localStorage.removeItem('moodle_user')
+          localStorage.removeItem('moodle_role')
+          localStorage.removeItem('moodle_teaching_ids')
+        } catch (e) {}
+        if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+          window.location.href = '/'
+        }
+        return { error: true, invalidToken: true, message: 'Invalid token' }
+      }
+      return data
     } catch (e) {
       console.warn('JSON parse error from:', url, e.message)
       return { error: true, message: 'Invalid JSON format' }

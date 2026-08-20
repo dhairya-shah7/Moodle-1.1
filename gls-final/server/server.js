@@ -247,28 +247,38 @@ const ALLOWED_PARAM_KEYS = new Set([
   'userid',
   'courseid',
   'courseids',
+  'assignmentid',
   'assignmentids',
   'field',
   'values',
   'timesortfrom',
+  'timesortto',
+  'limitnum',
+  'newestfirst',
+  'limit',
   'events',
   'section',
   'cmid',
   'itemid',
   'filearea',
-  'assignmentid',
   'plugingroup',
   'plugin',
   'submission',
   'grade',
-  'gradingstatus'
+  'gradingstatus',
+  'attemptnumber',
+  'addattempt',
+  'workflowstate',
+  'applytoall',
+  'acceptsubmissionstatement',
+  'plugindata'
 ])
 
 function isWhitelistedParamKey(key) {
   if (!key || typeof key !== 'string') return false
   if (ALLOWED_PARAM_KEYS.has(key)) return true
-  // Match array parameter formats like courseids[0], values[0], assignmentids[12]
-  const baseKey = key.replace(/\[\d+\]$/, '')
+  // Match bracketed parameters like courseids[0], plugindata[files_filemanager], etc.
+  const baseKey = key.split('[')[0]
   return ALLOWED_PARAM_KEYS.has(baseKey)
 }
 
