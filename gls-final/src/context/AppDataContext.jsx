@@ -125,9 +125,9 @@ export function AppDataProvider({ children }) {
       
       let currentCourses = courseList
       if (courseList.length === 0) {
-        currentCourses = safeGetCache(`moodle_cache_courses_${uid}`) || courses
+        currentCourses = safeGetCache(`moodle_cache_courses_${uid}`) || []
       }
-      setCourses(currentCourses)
+      setCourses(prev => currentCourses.length > 0 ? currentCourses : prev)
       setNotifications(n?.notifications || [])
       setCalendarEvents(cal?.events || [])
 
@@ -147,9 +147,9 @@ export function AppDataProvider({ children }) {
       
       let currentAssignments = assignmentList
       if (assignmentList.length === 0) {
-        currentAssignments = safeGetCache(`moodle_cache_assignments_${uid}`) || assignments
+        currentAssignments = safeGetCache(`moodle_cache_assignments_${uid}`) || []
       }
-      setAssignments(currentAssignments)
+      setAssignments(prev => currentAssignments.length > 0 ? currentAssignments : prev)
 
       const mergedFiles = [...(Array.isArray(primaryFiles) ? primaryFiles : [])]
       const fileUrls = new Set(mergedFiles.map(f => f.fileurl || f.url))
@@ -167,9 +167,9 @@ export function AppDataProvider({ children }) {
       
       let currentFiles = mergedFiles
       if (mergedFiles.length === 0) {
-        currentFiles = safeGetCache(`moodle_cache_files_${uid}`) || files
+        currentFiles = safeGetCache(`moodle_cache_files_${uid}`) || []
       }
-      setFiles(currentFiles)
+      setFiles(prev => currentFiles.length > 0 ? currentFiles : prev)
       prevFileCount.current = currentFiles.length
 
       if (role === 'student' && currentAssignments.length > 0) {
@@ -212,7 +212,7 @@ export function AppDataProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }, [isLoggedIn, user?.userid, user?.id, token, role, moodle, loadSubmissions, teachingCourseIds, courses, assignments, files])
+  }, [isLoggedIn, user?.userid, user?.id, token, role, moodle, loadSubmissions, teachingCourseIds])
 
   useEffect(() => { loadAll() }, [loadAll])
 

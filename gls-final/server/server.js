@@ -256,8 +256,11 @@ const ALLOWED_PARAM_KEYS = new Set([
   'wsfunction',
   'moodlewsrestformat',
   'userid',
+  'userids',
   'courseid',
   'courseids',
+  'assignid',
+  'assignids',
   'assignmentid',
   'assignmentids',
   'field',
@@ -282,7 +285,15 @@ const ALLOWED_PARAM_KEYS = new Set([
   'workflowstate',
   'applytoall',
   'acceptsubmissionstatement',
-  'plugindata'
+  'plugindata',
+  'groupid',
+  'groupingid',
+  'options',
+  'criteria',
+  'search',
+  'filter',
+  'page',
+  'perpage'
 ])
 
 function isWhitelistedParamKey(key) {
