@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, CheckCircle2, ExternalLink, Edit3, Upload, FileText, Grid } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
-import { assignStatus, fmt, truncate, daysLeft, getFormattedDate } from '../utils/helpers'
+import { assignStatus, fmt, truncate, daysLeft, getFormattedDate, isAssignmentSubmitted } from '../utils/helpers'
 import AssignmentModal from '../components/AssignmentModal'
 
 export default function CalendarPage() {
@@ -16,7 +16,10 @@ export default function CalendarPage() {
   const firstDow = new Date(y, m, 1).getDay()
   const daysInMonth = new Date(y, m + 1, 0).getDate()
 
-  const getSubStatus = (id) => submissions[id]?.lastattempt?.submission?.status || 'new'
+  const checkSubmitted = (id) => {
+    const assignObj = assignments.find(a => a.id === id)
+    return isAssignmentSubmitted(submissions[id], assignObj)
+  }
 
   // Build a cmid → assignment map so calendar events can link to submit modal
   const cmidToAssign = useMemo(() => {
@@ -174,7 +177,7 @@ export default function CalendarPage() {
               const hasEvent = evts.length > 0
               const isSelected = selectedDay === day
               const assignEvts = evts.filter(e => e.assignId)
-              const allSubmitted = assignEvts.length > 0 && assignEvts.every(e => getSubStatus(e.assignId) === 'submitted')
+              const allSubmitted = assignEvts.length > 0 && assignEvts.every(e => checkSubmitted(e.assignId))
               const dotColor = allSubmitted ? 'var(--success)' : 'var(--danger)'
 
               return (
@@ -239,8 +242,7 @@ export default function CalendarPage() {
                 </div>
               </div>
               {dayEvents.map((ev, i) => {
-                const subStatus = ev.assignId ? getSubStatus(ev.assignId) : null
-                const isSubmitted = subStatus === 'submitted'
+                const isSubmitted = ev.assignId ? checkSubmitted(ev.assignId) : false
                 const s = ev.assignment ? assignStatus(ev.assignment) : null
 
                 return (
@@ -309,7 +311,7 @@ export default function CalendarPage() {
                   .slice(0, 6)
                   .map(a => {
                     const s = assignStatus(a)
-                    const isSubmitted = getSubStatus(a.id) === 'submitted'
+                    const isSubmitted = checkSubmitted(a.id)
                     return (
                       <div key={a.id} onClick={() => setModalAssign(a)} className="card"
                         style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, transition: 'all .2s' }}

@@ -1,15 +1,13 @@
 import { Bell, Clock, Info, CheckCircle2 } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
-import { fmt, daysLeft, truncate } from '../utils/helpers'
+import { fmt, daysLeft, truncate, isAssignmentSubmitted } from '../utils/helpers'
 import Spinner from '../components/Spinner'
 
 export default function Notifications() {
   const { assignments, submissions, notifications, loading } = useAppData()
 
-  const getSubStatus = (id) => submissions[id]?.lastattempt?.submission?.status || 'new'
-
   const deadlineNotifs = assignments
-    .filter(a => a.duedate && daysLeft(a.duedate) >= 0 && daysLeft(a.duedate) <= 3 && getSubStatus(a.id) !== 'submitted')
+    .filter(a => a.duedate && daysLeft(a.duedate) >= 0 && daysLeft(a.duedate) <= 3 && !isAssignmentSubmitted(submissions[a.id], a))
     .map(a => ({
       icon: <Clock className="text-danger" size={18} />,
       title: `Deadline Soon: ${truncate(a.name, 40)}`,

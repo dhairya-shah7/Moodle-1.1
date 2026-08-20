@@ -137,8 +137,7 @@ export default function Assignments() {
         : <div className="assign-list" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filtered.map(a => {
               const s = assignStatus(a)
-              const subStatus = getSubStatus(a)
-              const isSubmitted = subStatus === 'submitted'
+              const isSubmitted = checkSubmitted(a)
               const isIgnored = ignoredAssignmentIds.includes(a.id)
               return (
                 <div key={a.id} className="card assign-item" style={{ 
