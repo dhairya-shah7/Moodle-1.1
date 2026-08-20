@@ -1063,6 +1063,11 @@ app.all('/proxy/*', (req, res) => {
   res.status(404).json({ error: 'Unknown endpoint' })
 })
 
+// Force-disable ServiceWorker permanently on browser clients (causes Chrome to instantly unregister it)
+app.get(['/sw.js', '/service-worker.js'], (req, res) => {
+  res.status(404).setHeader('Cache-Control', 'no-cache, no-store, must-revalidate').send('ServiceWorker disabled')
+})
+
 // Serve built React frontend with no-cache headers for index.html and JS assets
 app.use(express.static(path.join(__dirname, '../dist'), {
   etag: true,
