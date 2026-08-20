@@ -2,7 +2,18 @@ import { useNavigate } from 'react-router-dom'
 import { ShieldAlert, Home, RotateCcw, Lock } from 'lucide-react'
 
 export default function NotFound({ error, isCrash = false }) {
-  const navigate = useNavigate()
+  let navigate = null
+  try {
+    navigate = useNavigate()
+  } catch (e) {}
+
+  const handleGoHome = () => {
+    if (navigate) {
+      navigate('/dashboard')
+    } else {
+      window.location.href = '/'
+    }
+  }
 
   return (
     <div className="not-found-container" style={{
@@ -116,7 +127,7 @@ export default function NotFound({ error, isCrash = false }) {
           marginBottom: 28
         }}>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={handleGoHome}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
