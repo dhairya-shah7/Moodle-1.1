@@ -1,3 +1,6 @@
+import { useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
+
 async function fetchWithTimeout(resource, options = {}, timeoutMs = 12000) {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
   const id = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
