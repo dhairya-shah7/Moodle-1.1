@@ -16,6 +16,7 @@ import Profile from './pages/Profile'
 import Grades from './pages/Grades'
 import Submissions from './pages/Submissions'
 import NotFound from './pages/NotFound'
+import AssistantWidget from './components/AssistantWidget'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -84,6 +85,7 @@ function AppLayout() {
       </div>
 
       <BottomNav badges={badges || {}} />
+      <AssistantWidget />
 
       <Toaster 
         position="top-right" 

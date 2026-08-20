@@ -106,27 +106,34 @@ export function AppDataProvider({ children }) {
   }, [moodle])
 
   const loadAll = useCallback(async () => {
-    if (!isLoggedIn || !user?.userid) return
+    const uid = user?.userid || user?.id
+    if (!isLoggedIn || !uid) return
     setLoading(true)
     try {
       const coursePromise = (role === 'faculty')
         ? moodle.getAllCourses()
-        : moodle.getCourses(user.userid)
+        : moodle.getCourses(uid)
 
       const [c, n, cal] = await Promise.all([
         coursePromise.catch(err => { console.warn('getCourses error:', err); return [] }),
-        moodle.getNotifications(user.userid).catch(() => ({ notifications: [] })),
+        moodle.getNotifications(uid).catch(() => ({ notifications: [] })),
         moodle.getCalendarEvents().catch(() => ({ events: [] })),
       ])
 
       const courseList = Array.isArray(c) ? c : []
-      setCourses(courseList)
+      if (courseList.length > 0) safeSetCache(`moodle_cache_courses_${uid}`, courseList)
+      
+      let currentCourses = courseList
+      if (courseList.length === 0) {
+        currentCourses = safeGetCache(`moodle_cache_courses_${uid}`) || courses
+      }
+      setCourses(currentCourses)
       setNotifications(n?.notifications || [])
       setCalendarEvents(cal?.events || [])
 
       const enrolledCourses = (role === 'faculty')
-        ? courseList.filter(c => teachingCourseIds?.has(c.id) || teachingCourseIds?.has(String(c.id)))
-        : courseList
+        ? currentCourses.filter(c => teachingCourseIds?.has(c.id) || teachingCourseIds?.has(String(c.id)))
+        : currentCourses
 
       const [a, primaryFiles, fallbackFiles, urlFiles] = await Promise.all([
         moodle.getAssignments(enrolledCourses).catch(() => []),
@@ -136,7 +143,13 @@ export function AppDataProvider({ children }) {
       ])
 
       const assignmentList = Array.isArray(a) ? a : []
-      setAssignments(assignmentList)
+      if (assignmentList.length > 0) safeSetCache(`moodle_cache_assignments_${uid}`, assignmentList)
+      
+      let currentAssignments = assignmentList
+      if (assignmentList.length === 0) {
+        currentAssignments = safeGetCache(`moodle_cache_assignments_${uid}`) || assignments
+      }
+      setAssignments(currentAssignments)
 
       const mergedFiles = [...(Array.isArray(primaryFiles) ? primaryFiles : [])]
       const fileUrls = new Set(mergedFiles.map(f => f.fileurl || f.url))
@@ -150,15 +163,21 @@ export function AppDataProvider({ children }) {
       if (Array.isArray(fallbackFiles)) fallbackFiles.forEach(addUniqueFile)
       if (Array.isArray(urlFiles)) urlFiles.forEach(addUniqueFile)
 
-      setFiles(mergedFiles)
-      prevFileCount.current = mergedFiles.length
+      if (mergedFiles.length > 0) safeSetCache(`moodle_cache_files_${uid}`, mergedFiles)
+      
+      let currentFiles = mergedFiles
+      if (mergedFiles.length === 0) {
+        currentFiles = safeGetCache(`moodle_cache_files_${uid}`) || files
+      }
+      setFiles(currentFiles)
+      prevFileCount.current = currentFiles.length
 
-      if (role === 'student' && assignmentList.length > 0) {
-        await loadSubmissions(assignmentList)
+      if (role === 'student' && currentAssignments.length > 0) {
+        await loadSubmissions(currentAssignments)
         const dueToday = []
         const dueTomorrow = []
 
-        assignmentList.forEach(assign => {
+        currentAssignments.forEach(assign => {
           if (toastedIds.current.has(assign.id)) return
           const d = daysLeft(assign.duedate)
           if (d === 0) {
@@ -193,7 +212,7 @@ export function AppDataProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }, [isLoggedIn, user?.userid, token, role, moodle, loadSubmissions, teachingCourseIds])
+  }, [isLoggedIn, user?.userid, user?.id, token, role, moodle, loadSubmissions, teachingCourseIds, courses, assignments, files])
 
   useEffect(() => { loadAll() }, [loadAll])
 

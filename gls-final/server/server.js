@@ -41,6 +41,17 @@ const LikeSchema = new mongoose.Schema({
 LikeSchema.index({ targetUser: 1, likedBy: 1 }, { unique: true })
 const Like = mongoose.models.Like || mongoose.model('Like', LikeSchema)
 
+const UserFileSchema = new mongoose.Schema({
+  username: { type: String, required: true },
+  filename: { type: String, required: true },
+  filesize: { type: Number, required: true },
+  mimetype: { type: String, default: 'application/octet-stream' },
+  fileData: { type: String, required: true }, // Base64
+  uploadDate: { type: Date, default: Date.now }
+})
+UserFileSchema.index({ username: 1 })
+const UserFile = mongoose.models.UserFile || mongoose.model('UserFile', UserFileSchema)
+
 const app = express()
 const MOODLE = 'https://btech.glsmoodle.in'
 
@@ -786,6 +797,236 @@ app.post('/proxy/like', async (req, res) => {
   } catch (e) {
     console.error('Error recording like:', e)
     res.status(500).json({ error: 'Failed to record like' })
+  }
+})
+
+// ══════════════════════════════════════════
+// 7. USER PERSONAL CLOUD STORAGE (1 MB PER USER MAX QUOTA)
+// ══════════════════════════════════════════
+const userStorageFilePath = path.join(__dirname, 'user_storage.json')
+
+async function getUserStorageFiles(username) {
+  if (!username) return { usedBytes: 0, quotaBytes: 1048576, files: [] }
+  const cleanUser = String(username).trim().toLowerCase()
+
+  if (isMongoConnected) {
+    try {
+      const records = await UserFile.find({ username: cleanUser }).select('-fileData').lean()
+      const files = records.map(r => ({
+        id: r._id.toString(),
+        filename: r.filename,
+        filesize: r.filesize,
+        mimetype: r.mimetype,
+        uploadDate: r.uploadDate
+      }))
+      const usedBytes = files.reduce((acc, f) => acc + (f.filesize || 0), 0)
+      return { usedBytes, quotaBytes: 1048576, files }
+    } catch (e) {
+      console.error('MongoDB getUserStorageFiles error, using fallback:', e)
+    }
+  }
+
+  let localStore = []
+  try {
+    if (fs.existsSync(userStorageFilePath)) {
+      localStore = JSON.parse(fs.readFileSync(userStorageFilePath, 'utf8'))
+    }
+  } catch (e) {}
+
+  const userRecords = localStore.filter(f => f.username?.toLowerCase() === cleanUser)
+  const files = userRecords.map(r => ({
+    id: r.id,
+    filename: r.filename,
+    filesize: r.filesize,
+    mimetype: r.mimetype,
+    uploadDate: r.uploadDate
+  }))
+  const usedBytes = files.reduce((acc, f) => acc + (f.filesize || 0), 0)
+  return { usedBytes, quotaBytes: 1048576, files }
+}
+
+// ── GET User Storage Status & File List
+app.get('/proxy/storage', async (req, res) => {
+  try {
+    const username = req.query.username
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: 'Username required' })
+    }
+    const data = await getUserStorageFiles(username)
+    res.json(data)
+  } catch (e) {
+    console.error('Storage info error:', e)
+    res.status(500).json({ error: 'Failed to fetch storage info' })
+  }
+})
+
+// ── POST User Storage Upload (Max 1 MB Total User Quota + Security Filters)
+app.post('/proxy/storage/upload', uploadLimiter, upload.single('file'), async (req, res) => {
+  try {
+    const { username } = req.body || {}
+    if (!username || typeof username !== 'string') {
+      return res.status(400).json({ error: 'Username required' })
+    }
+    const cleanUser = String(username).trim()
+    if (!cleanUser || !/^[a-zA-Z0-9_@.\-]+$/.test(cleanUser)) {
+      return res.status(400).json({ error: 'Invalid username format' })
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
+    }
+
+    const file = req.file
+    const origName = file.originalname || 'file'
+
+    // 1. Strict Filename Security Checks
+    if (origName.includes('\0') || origName.includes('%00') || origName.includes('..')) {
+      return res.status(400).json({ error: 'Security error: Invalid characters in filename' })
+    }
+
+    // 2. Double Extension Defense
+    const parts = origName.split('.').filter(Boolean)
+    if (parts.length > 2) {
+      const middleExts = parts.slice(1, -1).map(p => p.toLowerCase())
+      if (middleExts.some(ext => BLOCKED_REGEX.test(`.${ext}`))) {
+        return res.status(400).json({ error: 'Security error: Suspicious double extension' })
+      }
+    }
+
+    // 3. Zip Bomb & Executable Script Defense
+    if (BLOCKED_REGEX.test(origName)) {
+      return res.status(400).json({ error: 'Security error: Archives (.zip/.rar), scripts, and executables are blocked' })
+    }
+
+    const ext = parts.pop()?.toLowerCase()
+    if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+      return res.status(400).json({ error: 'Only PDF, Word, PPT, Excel, TXT and images are allowed' })
+    }
+
+    // 4. Strict 1 MB User Cumulative Quota Verification
+    const currentStorage = await getUserStorageFiles(cleanUser)
+    const newTotal = currentStorage.usedBytes + file.size
+    if (newTotal > 1048576) {
+      const avail = Math.max(0, 1048576 - currentStorage.usedBytes)
+      const availKB = Math.round(avail / 1024)
+      return res.status(400).json({
+        error: `Quota exceeded! Total storage limit is 1 MB. You have ${availKB} KB remaining.`
+      })
+    }
+
+    const fileBase64 = file.buffer.toString('base64')
+    let savedId = Date.now().toString()
+
+    if (isMongoConnected) {
+      try {
+        const doc = await UserFile.create({
+          username: cleanUser.toLowerCase(),
+          filename: origName,
+          filesize: file.size,
+          mimetype: file.mimetype || 'application/octet-stream',
+          fileData: fileBase64,
+          uploadDate: new Date()
+        })
+        savedId = doc._id.toString()
+      } catch (e) {
+        console.error('MongoDB storage save failed, falling back to local file:', e)
+      }
+    }
+
+    // Always keep local JSON fallback in sync if mongo is not connected
+    if (!isMongoConnected) {
+      let localStore = []
+      try {
+        if (fs.existsSync(userStorageFilePath)) {
+          localStore = JSON.parse(fs.readFileSync(userStorageFilePath, 'utf8'))
+        }
+      } catch (e) {}
+
+      localStore.push({
+        id: savedId,
+        username: cleanUser.toLowerCase(),
+        filename: origName,
+        filesize: file.size,
+        mimetype: file.mimetype || 'application/octet-stream',
+        fileData: fileBase64,
+        uploadDate: new Date().toISOString()
+      })
+      fs.writeFileSync(userStorageFilePath, JSON.stringify(localStore), 'utf8')
+    }
+
+    const updated = await getUserStorageFiles(cleanUser)
+    res.json({ success: true, message: 'File saved to cloud storage!', ...updated })
+  } catch (e) {
+    console.error('Storage upload error:', e)
+    res.status(500).json({ error: 'Failed to save file' })
+  }
+})
+
+// ── GET User Storage File Download
+app.get('/proxy/storage/download/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId
+    if (!fileId) return res.status(400).json({ error: 'File ID required' })
+
+    let record = null
+    if (isMongoConnected) {
+      try {
+        record = await UserFile.findById(fileId).lean()
+      } catch (e) {}
+    }
+
+    if (!record) {
+      try {
+        if (fs.existsSync(userStorageFilePath)) {
+          const store = JSON.parse(fs.readFileSync(userStorageFilePath, 'utf8'))
+          record = store.find(f => String(f.id) === String(fileId))
+        }
+      } catch (e) {}
+    }
+
+    if (!record || !record.fileData) {
+      return res.status(404).json({ error: 'File not found' })
+    }
+
+    const fileBuf = Buffer.from(record.fileData, 'base64')
+    res.setHeader('Content-Type', record.mimetype || 'application/octet-stream')
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(record.filename)}"`)
+    res.send(fileBuf)
+  } catch (e) {
+    console.error('Storage download error:', e)
+    res.status(500).json({ error: 'Download failed' })
+  }
+})
+
+// ── DELETE User Storage File
+app.delete('/proxy/storage/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId
+    const username = req.query.username
+    if (!fileId || !username) {
+      return res.status(400).json({ error: 'File ID and username required' })
+    }
+    const cleanUser = String(username).trim().toLowerCase()
+
+    if (isMongoConnected) {
+      try {
+        await UserFile.deleteOne({ _id: fileId, username: cleanUser })
+      } catch (e) {}
+    }
+
+    try {
+      if (fs.existsSync(userStorageFilePath)) {
+        let store = JSON.parse(fs.readFileSync(userStorageFilePath, 'utf8'))
+        store = store.filter(f => !(String(f.id) === String(fileId) && f.username?.toLowerCase() === cleanUser))
+        fs.writeFileSync(userStorageFilePath, JSON.stringify(store), 'utf8')
+      }
+    } catch (e) {}
+
+    const updated = await getUserStorageFiles(cleanUser)
+    res.json({ success: true, message: 'File deleted!', ...updated })
+  } catch (e) {
+    console.error('Storage delete error:', e)
+    res.status(500).json({ error: 'Failed to delete file' })
   }
 })
 

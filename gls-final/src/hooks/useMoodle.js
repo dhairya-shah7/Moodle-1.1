@@ -27,6 +27,10 @@ async function safeJsonFetch(url, options = {}, timeoutMs = 12000) {
     if (!text || !text.trim()) {
       return { error: true, message: 'Empty response body' }
     }
+    if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('Fortinet') || text.includes('Cyberoam') || text.includes('fgta_')) {
+      console.warn('Campus firewall / Fortinet block page detected.')
+      return { error: true, firewallBlocked: true, message: 'Campus firewall blocking active' }
+    }
     try {
       const data = JSON.parse(text)
       if (data && (data.errorcode === 'invalidtoken' || data.message === 'Invalid token - token not found')) {
@@ -208,7 +212,7 @@ export function useMoodle() {
           sections.forEach(sec => {
             ;(sec.modules || []).forEach(mod => {
               ;(mod.contents || []).forEach(f => {
-                if (f.type === 'file' && f.filename && !f.filename.endsWith('/')) {
+                if (f.fileurl && f.filename && !f.filename.endsWith('/') && f.type !== 'url') {
                   items.push({
                     ...f,
                     itemType: 'file',
@@ -217,11 +221,11 @@ export function useMoodle() {
                     courseid: c.id,
                     sectionname: sec.name || '',
                     modname: mod.name,
-                    modtype: mod.modname,
+                    modtype: mod.modname || 'file',
                     url: f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token,
                   })
                 }
-                if (f.type === 'url' && f.fileurl) {
+                if (f.type === 'url' || (f.fileurl && mod.modname === 'url')) {
                   items.push({
                     filename: mod.name || f.filename,
                     fileurl: f.fileurl,

@@ -18,11 +18,13 @@ import {
   Inbox,
   Heart,
   HelpCircle,
+  HardDrive,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { truncate } from '../utils/helpers'
 import { useTheme } from '../hooks/useTheme'
 import toast from 'react-hot-toast'
+import StorageModal from './StorageModal'
 
 const MOODLE = 'https://btech.glsmoodle.in'
 
@@ -71,6 +73,7 @@ export default function Sidebar({ badges = {} }) {
   const sheetRef = useRef(null)
   const moreBtnRef = useRef(null)
   const [showFaq, setShowFaq] = useState(false)
+  const [showStorage, setShowStorage] = useState(false)
   const [faqMessage, setFaqMessage] = useState('')
   const [faqSending, setFaqSending] = useState(false)
   const [faqSuccess, setFaqSuccess] = useState(false)
@@ -220,6 +223,23 @@ export default function Sidebar({ badges = {} }) {
                 >
                   <HelpCircle size={13} />
                   <span>FAQ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowStorage(true)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 8px', borderRadius: 12, cursor: 'pointer',
+                    background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)',
+                    color: '#3b82f6', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease', flexShrink: 0
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)'}
+                  title="Personal Cloud Storage (1 MB Quota)"
+                >
+                  <HardDrive size={13} />
+                  <span>Storage</span>
                 </button>
               </div>
               <div className="bottom-nav__meta">{dispId}</div>
@@ -474,6 +494,8 @@ export default function Sidebar({ badges = {} }) {
           </div>
         </div>
       )}
+
+      <StorageModal isOpen={showStorage} onClose={() => setShowStorage(false)} user={user} />
     </>
   )
 }
