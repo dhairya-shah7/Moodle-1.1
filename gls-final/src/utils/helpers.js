@@ -24,6 +24,7 @@ export const daysLeft = ts => {
   if (diff < 0) {
     return Math.floor(diff / 86400000)
   }
+  return Math.ceil(diff / 86400000)
 }
 export const truncate = (str, n) => str && str.length > n ? str.slice(0, n) + '…' : str
 

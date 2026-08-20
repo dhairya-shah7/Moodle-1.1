@@ -308,7 +308,7 @@ export default function CalendarPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {assignments
                   .filter(a => a.duedate && daysLeft(a.duedate) >= -1)
-                  .slice(0, 6)
+                  .sort((a, b) => (a.duedate || 0) - (b.duedate || 0))
                   .map(a => {
                     const s = assignStatus(a)
                     const isSubmitted = checkSubmitted(a.id)
@@ -324,7 +324,7 @@ export default function CalendarPage() {
                         }} />
                         <div style={{ flex: 1, overflow: 'hidden' }}>
                           <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truncate(a.name, 35)}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{a.courseshort}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{a.courseshort || a.coursename}</div>
                         </div>
                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                           <div style={{

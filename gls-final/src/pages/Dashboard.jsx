@@ -538,6 +538,7 @@ export default function Dashboard() {
 
   const soon = assignments
     .filter(a => !ignoredAssignmentIds.includes(a.id))
+    .filter(a => !isAssignmentSubmitted(submissions[a.id], a))
     .filter(a => { const d = daysLeft(a.duedate); return d >= 0 && d <= 7 })
 
   const pending = assignments
@@ -546,9 +547,8 @@ export default function Dashboard() {
 
   const upcoming = assignments
     .filter(a => !ignoredAssignmentIds.includes(a.id))
-    .filter(a => a.duedate && daysLeft(a.duedate) >= 0)
     .filter(a => !isAssignmentSubmitted(submissions[a.id], a))
-    .slice(0, 5)
+    .sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
 
   return (
     <div>
