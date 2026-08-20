@@ -6,11 +6,11 @@ import { Eye, EyeOff } from 'lucide-react'
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const { login } = useAuth()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
   const handleLogin = async () => {
     if (!username || !password) return
@@ -76,7 +76,7 @@ export default function Login() {
     <div className="login-screen">
       <div className="login-box">
         <div className="login-logo">GLS University</div>
-        <div className="login-title">Moodle Dashboard</div>
+        <div className="login-title">Moodle 1.1</div>
         <div className="login-sub">Sign in with your Moodle credentials</div>
 
         <div className="field-group">
