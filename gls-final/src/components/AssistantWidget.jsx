@@ -92,7 +92,7 @@ export default function AssistantWidget() {
           bottom: 74,
           right: 20,
           zIndex: 9999,
-          background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
           color: '#fff',
           border: 'none',
           borderRadius: '50%',
@@ -101,7 +101,7 @@ export default function AssistantWidget() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 8px 24px rgba(59, 130, 246, 0.45)',
+          boxShadow: '0 8px 24px rgba(245, 158, 11, 0.45)',
           cursor: 'pointer',
           transition: 'transform 0.2s ease, boxShadow 0.2s ease'
         }}
@@ -146,8 +146,8 @@ export default function AssistantWidget() {
                 width: 32,
                 height: 32,
                 borderRadius: 10,
-                background: 'rgba(59, 130, 246, 0.15)',
-                color: '#3b82f6',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#f59e0b',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
@@ -204,7 +204,7 @@ export default function AssistantWidget() {
           {/* Messages Log */}
           <div style={{
             flex: 1,
-            padding: 14,
+            padding: '18px 14px 14px 14px',
             overflowY: 'auto',
             display: 'flex',
             flexDirection: 'column',
