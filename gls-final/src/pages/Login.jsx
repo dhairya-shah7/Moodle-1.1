@@ -6,11 +6,11 @@ import { Eye, EyeOff } from 'lucide-react'
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const { login } = useAuth()
-  const navigate  = useNavigate()
+  const navigate = useNavigate()
 
   const handleLogin = async () => {
     if (!username || !password) return
