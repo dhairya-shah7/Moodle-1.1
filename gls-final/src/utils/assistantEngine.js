@@ -1,5 +1,13 @@
 import { daysLeft, fmt as formatDeadline, isAssignmentSubmitted } from './helpers'
 
+function cleanSearchKeyword(rawQuery) {
+  return String(rawQuery)
+    .toLowerCase()
+    .replace(/\b(materials|material|documents|document|resources|resource|assignments|assignment|courses|course|download|downloads|files|file|docs|doc|pdfs|pdf|ppts|ppt|notes|note|show|give|list|find|get|all|the|for|in|of|my|me|when|is|due|date|deadline)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function processAssistantQuery(userQuery = '', dataContext = {}) {
   const q = String(userQuery).toLowerCase().trim()
   if (!q) {
@@ -19,11 +27,12 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     user = {}
   } = dataContext
 
-  // Helper: check if assignment is submitted
   const isSubmitted = (assignId, assignObj) => {
     const sub = submissions[assignId]
     return isAssignmentSubmitted(sub, assignObj)
   }
+
+  const keyword = cleanSearchKeyword(q)
 
   // ── 1. Ignored Assignments Query
   if (q.includes('ignore') || q.includes('skip') || q.includes('hidden assignment')) {
@@ -69,7 +78,38 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 2. Remaining / Pending Assignments Query
+  // ── 2. Files / Documents Query
+  if (q.includes('file') || q.includes('doc') || q.includes('pdf') || q.includes('ppt') || q.includes('notes') || q.includes('material') || q.includes('download') || q.includes('resource')) {
+    const matchedFiles = keyword
+      ? files.filter(f => 
+          f.filename?.toLowerCase().includes(keyword) || 
+          f.coursename?.toLowerCase().includes(keyword) || 
+          f.courseshort?.toLowerCase().includes(keyword) ||
+          f.modname?.toLowerCase().includes(keyword)
+        )
+      : files
+
+    if (matchedFiles.length === 0) {
+      return {
+        text: keyword ? `No files found matching "${keyword}". Try checking the Files page directly.` : "No course files available right now.",
+        type: 'info'
+      }
+    }
+
+    return {
+      text: `Found ${matchedFiles.length} file${matchedFiles.length > 1 ? 's' : ''}${keyword ? ` for "${keyword}"` : ''}:`,
+      items: matchedFiles.slice(0, 10).map(f => ({
+        id: f.url || f.fileurl || f.filename,
+        title: f.filename || f.modname,
+        subtitle: `${f.coursename || f.courseshort || 'Course'} (${f.modtype || f.itemType})`,
+        url: f.url || f.fileurl,
+        type: 'file'
+      })),
+      type: 'file_list'
+    }
+  }
+
+  // ── 3. Remaining / Pending Assignments Query
   if (q.includes('remain') || q.includes('pending') || q.includes('todo') || q.includes('incomplete') || q.includes('what to do')) {
     const pendingList = assignments.filter(a => {
       if (ignoredAssignmentIds.includes(a.id)) return false
@@ -100,61 +140,28 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 3. Deadline Query (Specific Assignment or General)
-  if (q.includes('deadline') || q.includes('when is') || q.includes('due date') || q.includes('when due')) {
-    // Search matching assignment
-    const matchedAssignments = assignments.filter(a => {
-      const nameMatch = a.name?.toLowerCase().includes(q.replace(/deadline|when|is|due|date|for|the/g, '').trim())
-      const courseMatch = a.coursename?.toLowerCase().includes(q.replace(/deadline|when|is|due|date|for|the/g, '').trim())
-      return nameMatch || courseMatch
-    })
+  // ── 4. Deadline / Specific Assignment Query
+  if (q.includes('deadline') || q.includes('when is') || q.includes('due date') || q.includes('when due') || keyword.length > 0) {
+    const matchedAssignments = keyword
+      ? assignments.filter(a => 
+          a.name?.toLowerCase().includes(keyword) || 
+          a.coursename?.toLowerCase().includes(keyword) || 
+          a.courseshort?.toLowerCase().includes(keyword)
+        )
+      : assignments.filter(a => !isSubmitted(a.id, a))
 
-    const targetList = matchedAssignments.length > 0 ? matchedAssignments : assignments.filter(a => !isSubmitted(a.id, a))
-    if (targetList.length === 0) {
+    if (matchedAssignments.length > 0) {
       return {
-        text: "No upcoming deadlines found matching your request.",
-        type: 'info'
+        text: keyword ? `Found ${matchedAssignments.length} assignment${matchedAssignments.length > 1 ? 's' : ''} matching "${keyword}":` : `Here are the upcoming deadlines:`,
+        items: matchedAssignments.slice(0, 8).map(a => ({
+          id: a.id,
+          title: a.name,
+          subtitle: `${a.coursename || 'Course'} — Due ${formatDeadline(a.duedate)}`,
+          badge: isSubmitted(a.id, a) ? 'Submitted' : 'Pending',
+          type: 'assignment'
+        })),
+        type: 'list'
       }
-    }
-
-    return {
-      text: `Here are the upcoming deadlines:`,
-      items: targetList.slice(0, 6).map(a => ({
-        id: a.id,
-        title: a.name,
-        subtitle: `${a.coursename || 'Course'} — Due ${formatDeadline(a.duedate)}`,
-        badge: isSubmitted(a.id, a) ? 'Submitted' : 'Pending',
-        type: 'assignment'
-      })),
-      type: 'list'
-    }
-  }
-
-  // ── 4. Files / Documents Query
-  if (q.includes('file') || q.includes('doc') || q.includes('pdf') || q.includes('ppt') || q.includes('notes') || q.includes('material') || q.includes('download')) {
-    // Extract keywords
-    const searchKeyword = q.replace(/file|files|doc|docs|pdf|ppt|notes|material|materials|download|show|me|find|for|in|get/g, '').trim()
-    const matchedFiles = searchKeyword
-      ? files.filter(f => f.filename?.toLowerCase().includes(searchKeyword) || f.coursename?.toLowerCase().includes(searchKeyword) || f.courseshort?.toLowerCase().includes(searchKeyword))
-      : files
-
-    if (matchedFiles.length === 0) {
-      return {
-        text: searchKeyword ? `No files found for "${searchKeyword}". Try checking the Files page directly.` : "No course files available right now.",
-        type: 'info'
-      }
-    }
-
-    return {
-      text: `Found ${matchedFiles.length} file${matchedFiles.length > 1 ? 's' : ''}${searchKeyword ? ` for "${searchKeyword}"` : ''}:`,
-      items: matchedFiles.slice(0, 6).map(f => ({
-        id: f.url || f.fileurl || f.filename,
-        title: f.filename || f.modname,
-        subtitle: `${f.coursename || f.courseshort || 'Course'} (${f.modtype || f.itemType})`,
-        url: f.url || f.fileurl,
-        type: 'file'
-      })),
-      type: 'file_list'
     }
   }
 
@@ -185,9 +192,9 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     text: "I didn't quite catch that. Here are some things you can ask me:",
     suggestions: [
       "📋 Which assignments are remaining?",
+      "📁 PPL files / Compiler Design files",
       "⏰ When are my upcoming deadlines?",
-      "🚫 Which assignments have I ignored?",
-      "📁 Search for course files"
+      "🚫 Which assignments have I ignored?"
     ],
     type: 'help'
   }
