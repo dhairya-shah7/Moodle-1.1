@@ -76,7 +76,7 @@ export default function Login() {
     <div className="login-screen">
       <div className="login-box">
         <div className="login-logo">GLS University</div>
-        <div className="login-title">Moodle Dashboard</div>
+        <div className="login-title">Moodle 1.1</div>
         <div className="login-sub">Sign in with your Moodle credentials</div>
 
         <div className="field-group">
