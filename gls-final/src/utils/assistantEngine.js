@@ -3,7 +3,7 @@ import { daysLeft, fmt as formatDeadline, isAssignmentSubmitted } from './helper
 function cleanSearchKeyword(rawQuery) {
   return String(rawQuery)
     .toLowerCase()
-    .replace(/\b(materials|material|documents|document|resources|resource|assignments|assignment|courses|course|download|downloads|files|file|docs|doc|pdfs|pdf|ppts|ppt|notes|note|show|give|list|find|get|all|the|for|in|of|my|me|when|is|due|date|deadline)\b/gi, ' ')
+    .replace(/\b(materials|material|documents|document|resources|resource|assignments|assignment|courses|course|download|downloads|files|file|docs|doc|pdfs|pdf|ppts|ppt|notes|note|show|give|list|find|get|all|the|for|in|of|my|me|when|is|due|date|deadline|except|excluding|without|other|than|ignored|ignore|ignoreds)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -32,10 +32,33 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     return isAssignmentSubmitted(sub, assignObj)
   }
 
+  // Check if query explicitly asks to exclude ignored assignments
+  const isExcludingIgnored = 
+    q.includes('except ignore') || 
+    q.includes('without ignore') || 
+    q.includes('not ignore') || 
+    q.includes('exclude ignore') || 
+    q.includes('excluding ignore') || 
+    q.includes('other than ignore') || 
+    q.includes('no ignore')
+
+  // Check if query explicitly asks to view only ignored assignments
+  const isExplicitIgnoredQuery = !isExcludingIgnored && (
+    q.includes('show ignore') || 
+    q.includes('what are ignored') || 
+    q.includes('ignored assignment') || 
+    q.includes('ignored list') || 
+    q === 'ignored' || 
+    q === 'ignored assignments'
+  )
+
+  // Active (non-ignored) assignments pool
+  const activeAssignments = assignments.filter(a => !ignoredAssignmentIds.includes(a.id))
+
   const keyword = cleanSearchKeyword(q)
 
-  // ── 1. Ignored Assignments Query
-  if (q.includes('ignore') || q.includes('skip') || q.includes('hidden assignment')) {
+  // ── 1. Explicit Ignored Assignments Query
+  if (isExplicitIgnoredQuery) {
     const ignoredList = assignments.filter(a => ignoredAssignmentIds.includes(a.id))
     if (ignoredList.length === 0) {
       return {
@@ -56,12 +79,12 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 1b. Submitted / Completed Assignments Query
+  // ── 2. Submitted / Completed Assignments Query
   if (q.includes('submit') || q.includes('submitted') || q.includes('completed') || q.includes('done') || q.includes('finished')) {
-    const submittedList = assignments.filter(a => isSubmitted(a.id, a))
+    const submittedList = activeAssignments.filter(a => isSubmitted(a.id, a))
     if (submittedList.length === 0) {
       return {
-        text: "You haven't submitted any assignments yet.",
+        text: "You haven't submitted any active assignments yet.",
         type: 'info'
       }
     }
@@ -78,7 +101,7 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 2. Files / Documents Query
+  // ── 3. Files / Documents Query
   if (q.includes('file') || q.includes('doc') || q.includes('pdf') || q.includes('ppt') || q.includes('notes') || q.includes('material') || q.includes('download') || q.includes('resource')) {
     const matchedFiles = keyword
       ? files.filter(f => 
@@ -109,23 +132,22 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 3. Remaining / Pending Assignments Query
-  if (q.includes('remain') || q.includes('pending') || q.includes('todo') || q.includes('incomplete') || q.includes('what to do')) {
-    const pendingList = assignments.filter(a => {
-      if (ignoredAssignmentIds.includes(a.id)) return false
-      return !isSubmitted(a.id, a)
-    }).sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
+  // ── 4. Deadline / Due Dates Query (Always Excludes Ignored Assignments)
+  if (q.includes('deadline') || q.includes('when is') || q.includes('due date') || q.includes('when due')) {
+    const pendingDeadlines = activeAssignments
+      .filter(a => !isSubmitted(a.id, a))
+      .sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
 
-    if (pendingList.length === 0) {
+    if (pendingDeadlines.length === 0) {
       return {
-        text: "🎉 Great job! You have no pending assignments right now. All caught up!",
+        text: "🎉 You have no upcoming active deadlines! All caught up.",
         type: 'success'
       }
     }
 
     return {
-      text: `You have ${pendingList.length} remaining assignment${pendingList.length > 1 ? 's' : ''} to complete:`,
-      items: pendingList.map(a => {
+      text: `Here are your upcoming active deadlines (excluding ignored):`,
+      items: pendingDeadlines.slice(0, 8).map(a => {
         const d = daysLeft(a.duedate)
         let statusBadge = d < 0 ? 'Overdue' : d === 0 ? 'Due Today' : d === 1 ? 'Due Tomorrow' : `${d}d left`
         return {
@@ -140,32 +162,44 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 4. Deadline / Specific Assignment Query
-  if (q.includes('deadline') || q.includes('when is') || q.includes('due date') || q.includes('when due') || keyword.length > 0) {
-    const matchedAssignments = keyword
-      ? assignments.filter(a => 
+  // ── 5. General / Keyword / Remaining Assignments Query
+  if (q.includes('assignment') || q.includes('task') || q.includes('remain') || q.includes('pending') || q.includes('todo') || q.includes('incomplete') || q.includes('what to do') || keyword.length > 0) {
+    const pool = keyword
+      ? activeAssignments.filter(a => 
           a.name?.toLowerCase().includes(keyword) || 
           a.coursename?.toLowerCase().includes(keyword) || 
           a.courseshort?.toLowerCase().includes(keyword)
         )
-      : assignments.filter(a => !isSubmitted(a.id, a))
+      : activeAssignments.filter(a => !isSubmitted(a.id, a))
 
-    if (matchedAssignments.length > 0) {
+    const pendingList = pool.sort((a, b) => (a.duedate || 999999999) - (b.duedate || 999999999))
+
+    if (pendingList.length === 0) {
       return {
-        text: keyword ? `Found ${matchedAssignments.length} assignment${matchedAssignments.length > 1 ? 's' : ''} matching "${keyword}":` : `Here are the upcoming deadlines:`,
-        items: matchedAssignments.slice(0, 8).map(a => ({
+        text: keyword ? `No active assignments found matching "${keyword}".` : "🎉 You have no pending active assignments!",
+        type: 'info'
+      }
+    }
+
+    return {
+      text: keyword ? `Found ${pendingList.length} assignment${pendingList.length > 1 ? 's' : ''} matching "${keyword}" (excluding ignored):` : `You have ${pendingList.length} active assignment${pendingList.length > 1 ? 's' : ''} (excluding ignored):`,
+      items: pendingList.slice(0, 10).map(a => {
+        const d = daysLeft(a.duedate)
+        const sub = isSubmitted(a.id, a)
+        let statusBadge = sub ? 'Submitted' : (d < 0 ? 'Overdue' : d === 0 ? 'Due Today' : d === 1 ? 'Due Tomorrow' : `${d}d left`)
+        return {
           id: a.id,
           title: a.name,
-          subtitle: `${a.coursename || 'Course'} — Due ${formatDeadline(a.duedate)}`,
-          badge: isSubmitted(a.id, a) ? 'Submitted' : 'Pending',
+          subtitle: `${a.coursename || a.courseshort || 'Course'} • ${formatDeadline(a.duedate)}`,
+          badge: statusBadge,
           type: 'assignment'
-        })),
-        type: 'list'
-      }
+        }
+      }),
+      type: 'list'
     }
   }
 
-  // ── 5. Hidden Courses Query
+  // ── 6. Hidden Courses Query
   if (q.includes('hidden course') || q.includes('hidden courses')) {
     const hiddenList = courses.filter(c => hiddenCourseIds.includes(c.id))
     if (hiddenList.length === 0) {
@@ -187,14 +221,14 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
-  // ── 6. Fallback Guided Response
+  // ── 7. Fallback Guided Response
   return {
     text: "I didn't quite catch that. Here are some things you can ask me:",
     suggestions: [
-      "📋 Which assignments are remaining?",
-      "📁 PPL files / Compiler Design files",
-      "⏰ When are my upcoming deadlines?",
-      "🚫 Which assignments have I ignored?"
+      "📋 Assignments except ignored",
+      "⏰ Upcoming deadlines",
+      "📁 PPL course files",
+      "🚫 Show ignored assignments"
     ],
     type: 'help'
   }
