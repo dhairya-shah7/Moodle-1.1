@@ -230,6 +230,10 @@ function DinoGame({ user }) {
   // Key handlers
   useEffect(() => {
     const handleKeyDown = (e) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable) {
+        return
+      }
       if (e.code === 'Space' || e.code === 'ArrowUp') {
         e.preventDefault()
         triggerJump()
@@ -240,6 +244,10 @@ function DinoGame({ user }) {
       }
     }
     const handleKeyUp = (e) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase()
+      if (activeTag === 'input' || activeTag === 'textarea' || document.activeElement?.isContentEditable) {
+        return
+      }
       if (e.code === 'ArrowDown') {
         triggerDuck(false)
       }

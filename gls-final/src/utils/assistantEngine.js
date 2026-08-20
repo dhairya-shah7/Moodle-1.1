@@ -47,6 +47,28 @@ export function processAssistantQuery(userQuery = '', dataContext = {}) {
     }
   }
 
+  // ── 1b. Submitted / Completed Assignments Query
+  if (q.includes('submit') || q.includes('submitted') || q.includes('completed') || q.includes('done') || q.includes('finished')) {
+    const submittedList = assignments.filter(a => isSubmitted(a.id, a))
+    if (submittedList.length === 0) {
+      return {
+        text: "You haven't submitted any assignments yet.",
+        type: 'info'
+      }
+    }
+    return {
+      text: `You have submitted ${submittedList.length} assignment${submittedList.length > 1 ? 's' : ''}:`,
+      items: submittedList.map(a => ({
+        id: a.id,
+        title: a.name,
+        subtitle: `${a.coursename || a.courseshort || 'Course'} • Submitted`,
+        badge: 'Submitted',
+        type: 'assignment'
+      })),
+      type: 'list'
+    }
+  }
+
   // ── 2. Remaining / Pending Assignments Query
   if (q.includes('remain') || q.includes('pending') || q.includes('todo') || q.includes('incomplete') || q.includes('what to do')) {
     const pendingList = assignments.filter(a => {

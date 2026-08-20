@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Send, AlertCircle, Clock, CheckCircle2, PartyPopper, Calendar, Filter, ChevronRight, Search, EyeOff } from 'lucide-react'
 import { useAppData } from '../context/AppDataContext'
@@ -35,6 +35,23 @@ export default function Assignments() {
     const sub = submissions[a.id]
     return isAssignmentSubmitted(sub, a)
   }
+
+  const counts = useMemo(() => {
+    let pendingC = 0, overdueC = 0, soonC = 0, submittedC = 0, ignoredC = 0
+    assignments.forEach(a => {
+      const s = assignStatus(a)
+      const sub = checkSubmitted(a)
+      const isIgnored = ignoredAssignmentIds.includes(a.id)
+      if (isIgnored) ignoredC++
+      else if (sub) submittedC++
+      else {
+        pendingC++
+        if (s.filterKey === 'overdue') overdueC++
+        if (s.filterKey === 'soon') soonC++
+      }
+    })
+    return { all: assignments.length, pending: pendingC, overdue: overdueC, soon: soonC, submitted: submittedC, ignored: ignoredC }
+  }, [assignments, submissions, ignoredAssignmentIds])
 
   const filtered = assignments.filter(a => {
     const s = assignStatus(a)
@@ -108,7 +125,7 @@ export default function Assignments() {
                 alignItems: 'center', 
                 gap: 8,
                 whiteSpace: 'nowrap',
-                padding: '10px 16px',
+                padding: '8px 14px',
                 borderRadius: 10,
                 background: filter === f.key ? 'var(--accent)' : 'var(--surface)',
                 color: filter === f.key ? '#fff' : 'var(--text2)',
@@ -120,7 +137,17 @@ export default function Assignments() {
               }}
             >
               <Icon size={14} />
-              {f.label}
+              <span>{f.label}</span>
+              <span style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 12,
+                background: filter === f.key ? 'rgba(255,255,255,0.25)' : 'var(--surface2)',
+                color: filter === f.key ? '#fff' : 'var(--text3)'
+              }}>
+                {counts[f.key] || 0}
+              </span>
             </button>
            )
         })}
