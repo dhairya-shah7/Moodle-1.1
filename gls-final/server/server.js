@@ -405,16 +405,24 @@ app.get('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (r
       method: 'GET',
       headers: {
         'User-Agent': 'Moodle1.1-Proxy/1.0',
-        'Accept': 'application/json'
-      }
+        'Accept': 'application/json, text/plain, */*'
+      },
+      timeout: 25000
     })
-    const data = await r.json()
+    const text = await r.text()
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (parseErr) {
+      console.warn(`[API GET HTML/NON-JSON] ${fn}:`, text.slice(0, 100))
+      return res.json({ error: true, firewallBlocked: true, message: 'Moodle API returned non-JSON response' })
+    }
     const isErr = data?.exception || data?.errorcode
     console.log(`[API GET] ${fn}`, isErr ? '❌ ' + (data.message || data.errorcode) : '✅ OK')
     res.json(data)
   } catch (e) {
     console.log('[API ERROR]', e.message)
-    res.status(500).json({ error: 'API request failed' })
+    res.status(500).json({ error: 'API request failed', message: e.message })
   }
 })
 
@@ -430,16 +438,25 @@ app.post('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Moodle1.1-Proxy/1.0',
-        'Accept': 'application/json'
+        'Accept': 'application/json, text/plain, */*'
       },
       body: cleanParams.toString(),
+      timeout: 25000
     })
-    const data = await r.json()
+    const text = await r.text()
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (parseErr) {
+      console.warn(`[API POST HTML/NON-JSON] ${fn}:`, text.slice(0, 100))
+      return res.json({ error: true, firewallBlocked: true, message: 'Moodle API returned non-JSON response' })
+    }
     const isErr = data?.exception || data?.errorcode
     console.log(`[API POST] ${fn}`, isErr ? '❌ ' + (data.message || data.errorcode) : '✅ OK')
     res.json(data)
   } catch (e) {
-    res.status(500).json({ error: 'API request failed' })
+    console.log('[API ERROR]', e.message)
+    res.status(500).json({ error: 'API request failed', message: e.message })
   }
 })
 

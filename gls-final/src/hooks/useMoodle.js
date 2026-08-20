@@ -17,7 +17,7 @@ async function fetchWithTimeout(resource, options = {}, timeoutMs = 12000) {
   }
 }
 
-async function safeJsonFetch(url, options = {}, timeoutMs = 12000) {
+async function safeJsonFetch(url, options = {}, timeoutMs = 25000) {
   try {
     const res = await fetchWithTimeout(url, options, timeoutMs)
     if (!res.ok) {
@@ -203,52 +203,56 @@ export function useMoodle() {
   const getCourseFiles = useCallback(async (courses) => {
     if (!courses || !courses.length) return []
     const items = []
-    await Promise.all(
-      courses.map(async (c) => {
-        try {
-          const url = `/proxy/api?wstoken=${token}&wsfunction=core_course_get_contents&moodlewsrestformat=json&courseid=${c.id}`
-          const sections = await safeJsonFetch(url)
-          if (!Array.isArray(sections)) return
-          sections.forEach(sec => {
-            ;(sec.modules || []).forEach(mod => {
-              ;(mod.contents || []).forEach(f => {
-                if (f.fileurl && f.filename && !f.filename.endsWith('/') && f.type !== 'url') {
-                  items.push({
-                    ...f,
-                    itemType: 'file',
-                    coursename: c.fullname,
-                    courseshort: c.shortname,
-                    courseid: c.id,
-                    sectionname: sec.name || '',
-                    modname: mod.name,
-                    modtype: mod.modname || 'file',
-                    url: f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token,
-                  })
-                }
-                if (f.type === 'url' || (f.fileurl && mod.modname === 'url')) {
-                  items.push({
-                    filename: mod.name || f.filename,
-                    fileurl: f.fileurl,
-                    filesize: 0,
-                    timemodified: f.timemodified,
-                    itemType: 'link',
-                    coursename: c.fullname,
-                    courseshort: c.shortname,
-                    courseid: c.id,
-                    sectionname: sec.name || '',
-                    modname: mod.name,
-                    modtype: 'url',
-                    url: f.fileurl,
-                  })
-                }
+    const batchSize = 3
+    for (let i = 0; i < courses.length; i += batchSize) {
+      const batch = courses.slice(i, i + batchSize)
+      await Promise.all(
+        batch.map(async (c) => {
+          try {
+            const url = `/proxy/api?wstoken=${token}&wsfunction=core_course_get_contents&moodlewsrestformat=json&courseid=${c.id}`
+            const sections = await safeJsonFetch(url)
+            if (!Array.isArray(sections)) return
+            sections.forEach(sec => {
+              ;(sec.modules || []).forEach(mod => {
+                ;(mod.contents || []).forEach(f => {
+                  if (f.fileurl && f.filename && !f.filename.endsWith('/') && f.type !== 'url') {
+                    items.push({
+                      ...f,
+                      itemType: 'file',
+                      coursename: c.fullname,
+                      courseshort: c.shortname,
+                      courseid: c.id,
+                      sectionname: sec.name || '',
+                      modname: mod.name,
+                      modtype: mod.modname || 'file',
+                      url: f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + token,
+                    })
+                  }
+                  if (f.type === 'url' || (f.fileurl && mod.modname === 'url')) {
+                    items.push({
+                      filename: mod.name || f.filename,
+                      fileurl: f.fileurl,
+                      filesize: 0,
+                      timemodified: f.timemodified,
+                      itemType: 'link',
+                      coursename: c.fullname,
+                      courseshort: c.shortname,
+                      courseid: c.id,
+                      sectionname: sec.name || '',
+                      modname: mod.name,
+                      modtype: 'url',
+                      url: f.fileurl,
+                    })
+                  }
+                })
               })
             })
-          })
-        } catch (e) {
-          console.warn('getCourseFiles error for', c.shortname, e.message)
-        }
-      })
-    )
+          } catch (e) {
+            console.warn('getCourseFiles error for', c.shortname, e.message)
+          }
+        })
+      )
+    }
     return items
   }, [token])
 

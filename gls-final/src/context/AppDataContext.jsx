@@ -93,9 +93,9 @@ export function AppDataProvider({ children }) {
 
   const loadSubmissions = useCallback(async (assignList) => {
     const map = {}
-    for (let i = 0; i < assignList.length; i += 5) {
+    for (let i = 0; i < assignList.length; i += 2) {
       await Promise.all(
-        assignList.slice(i, i + 5).map(async (a) => {
+        assignList.slice(i, i + 2).map(async (a) => {
           try { map[a.id] = await moodle.getSubmissionStatus(a.id) }
           catch (e) { map[a.id] = null }
         })
