@@ -370,9 +370,9 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
     if (!cleanUser || !cleanPass) {
       return res.status(400).json({ error: 'Username and password required' })
     }
-    // Sanitize: only allow alphanumeric + basic chars in username
-    if (!/^[a-zA-Z0-9_@.\-]+$/.test(cleanUser)) {
-      return res.status(400).json({ error: 'Invalid username format' })
+    // Sanitize: allow valid usernames and email addresses (alphanumeric + @ . _ - + %)
+    if (!/^[a-zA-Z0-9_@.\-+\%]+$/.test(cleanUser) || cleanUser.length > 254) {
+      return res.status(400).json({ error: 'Invalid username or email format' })
     }
 
     // Account level lockout check (protects against multi-IP cluster bombing)

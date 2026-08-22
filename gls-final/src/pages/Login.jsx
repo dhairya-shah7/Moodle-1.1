@@ -17,10 +17,11 @@ export default function Login() {
     setLoading(true); setError('')
     try {
       // Step 1: get token
+      const cleanUsername = username.trim()
       const r = await fetch('/proxy/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: cleanUsername, password })
       })
       const data = await r.json()
       if (!data.token) throw new Error(data.error || 'Invalid credentials')
@@ -80,8 +81,8 @@ export default function Login() {
         <div className="login-sub">Sign in with your Moodle credentials</div>
 
         <div className="field-group">
-          <div className="field-label">Username</div>
-          <input className="field-input" type="text" placeholder="e.g. a24cse057"
+          <div className="field-label">Username or Email</div>
+          <input className="field-input" type="text" placeholder="e.g. a24cse057 or student@glsuniversity.ac.in"
             value={username} onChange={e => setUsername(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()} autoComplete="username" />
         </div>
