@@ -81,8 +81,8 @@ export default function Login() {
         <div className="login-sub">Sign in with your Moodle credentials</div>
 
         <div className="field-group">
-          <div className="field-label">Username or Email</div>
-          <input className="field-input" type="text" placeholder="e.g. a24cse057 or rahulsharma01@gmail.com"
+          <div className="field-label">Username</div>
+          <input className="field-input" type="text" placeholder="e.g. a24cse057 or abc123@gmail.com"
             value={username} onChange={e => setUsername(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()} autoComplete="username" />
         </div>
