@@ -67,20 +67,26 @@ const DEPARTMENT_ENDPOINTS = {
 
 const DEFAULT_MOODLE = 'https://btech.glsmoodle.in'
 
-function resolveTargetMoodle(req) {
-  // 1. Department header
+function resolveDept(req) {
   const deptHeader = (req.headers['x-moodle-dept'] || req.headers['x-department-id'] || '').toLowerCase().trim()
-  if (deptHeader && DEPARTMENT_ENDPOINTS[deptHeader]) {
-    return DEPARTMENT_ENDPOINTS[deptHeader]
-  }
+  if (deptHeader && DEPARTMENT_ENDPOINTS[deptHeader]) return deptHeader
 
-  // 2. Query / Body parameter
   const deptParam = (req.query?.dept || req.body?.dept || '').toLowerCase().trim()
-  if (deptParam && DEPARTMENT_ENDPOINTS[deptParam]) {
-    return DEPARTMENT_ENDPOINTS[deptParam]
+  if (deptParam && DEPARTMENT_ENDPOINTS[deptParam]) return deptParam
+
+  const customUrl = (req.headers['x-moodle-url'] || req.query?.moodle_url || req.body?.moodle_url || '').toLowerCase().trim()
+  if (customUrl.includes('glsufcait.org') || customUrl.includes('bca')) return 'bca'
+  if (customUrl.includes('mca.glsmoodle.in') || customUrl.includes('mca')) return 'mca'
+
+  return 'btech'
+}
+
+function resolveTargetMoodle(req) {
+  const dept = resolveDept(req)
+  if (DEPARTMENT_ENDPOINTS[dept]) {
+    return DEPARTMENT_ENDPOINTS[dept]
   }
 
-  // 3. Custom Moodle URL (strictly validated against approved GLS domains)
   const customUrl = (req.headers['x-moodle-url'] || req.query?.moodle_url || req.body?.moodle_url || '').trim()
   if (customUrl) {
     try {
@@ -188,22 +194,27 @@ app.use('/proxy', (req, res, next) => {
 // ══════════════════════════════════════════
 // 3. RATE LIMITING & BRUTE-FORCE DEFENSE
 // ══════════════════════════════════════════
-// Login: 5 attempts per 15 minutes per IP
+// Login: relaxed for btech, completely removed for other departments (BCA, MCA, FCAIT)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  max: 30,
+  message: { error: 'Too many login attempts. Please try again in a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Remove rate limit for courses other than btech
+    return resolveDept(req) !== 'btech'
+  }
 })
 
 // Account Lockout Tracker against Multi-IP Cluster-Bombing
 const failedLoginTracker = new Map()
 
-function checkAccountLockout(username) {
+function checkAccountLockout(username, req) {
+  if (req && resolveDept(req) !== 'btech') return false
   const key = String(username).toLowerCase()
   const record = failedLoginTracker.get(key)
-  if (record && record.count >= 5) {
+  if (record && record.count >= 15) {
     if (Date.now() - record.lastAttempt < 15 * 60 * 1000) {
       return true
     } else {
@@ -225,26 +236,32 @@ function recordSuccessfulLogin(username) {
   failedLoginTracker.delete(String(username).toLowerCase())
 }
 
-// API: 1000 requests per minute per IP (accommodates shared campus Wi-Fi NAT IPs)
+// API: relaxed for btech (2000/min), removed for other departments
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 1000,
+  max: 2000,
   message: { error: 'Rate limit exceeded. Slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    return resolveDept(req) !== 'btech'
+  }
 })
 
-// Upload: 10 per 5 minutes
+// Upload: relaxed for btech, removed for other departments
 const uploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
+  max: 50,
   message: { error: 'Too many upload attempts. Try again later.' },
+  skip: (req) => {
+    return resolveDept(req) !== 'btech'
+  }
 })
 
-// Dino Game Score Submission: 5 per 5 minutes per IP
+// Dino Game Score Submission: 20 per 5 minutes per IP
 const dinoLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 5,
+  max: 20,
   message: { error: 'Too many score submissions. Slow down.' },
 })
 
@@ -442,18 +459,18 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid payload structure' })
     }
     const cleanUser = username.trim()
-    const cleanPass = password.trim()
+    const cleanPass = password // Preserve original password characters
 
     if (!cleanUser || !cleanPass) {
       return res.status(400).json({ error: 'Username and password required' })
     }
-    // Sanitize: allow valid usernames and email addresses (alphanumeric + @ . _ - + %)
-    if (!/^[a-zA-Z0-9_@.\-+\%]+$/.test(cleanUser) || cleanUser.length > 254) {
-      return res.status(400).json({ error: 'Invalid username or email format' })
+    // Reject control characters or unreasonably long inputs
+    if (cleanUser.length > 254 || /[\x00-\x1F\x7F]/.test(cleanUser)) {
+      return res.status(400).json({ error: 'Invalid username format' })
     }
 
-    // Account level lockout check (protects against multi-IP cluster bombing)
-    if (checkAccountLockout(cleanUser)) {
+    // Account level lockout check (protects against multi-IP cluster bombing for btech)
+    if (checkAccountLockout(cleanUser, req)) {
       return res.status(429).json({ error: 'Account temporarily locked due to multiple failed login attempts. Try again in 15 minutes.' })
     }
 
@@ -473,17 +490,27 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
       },
       body: bodyParams.toString(),
     })
-    const data = await r.json()
-    console.log('[TOKEN]', data.token ? '✅ OK' : '❌ Failed')
+    
+    const text = await r.text()
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (parseErr) {
+      console.warn(`[TOKEN NON-JSON] Target: ${targetMoodle}`, text.slice(0, 100))
+      return res.status(502).json({ error: 'Moodle server returned an invalid response. Please verify department connection.' })
+    }
+
+    console.log('[TOKEN]', data.token ? '✅ OK' : '❌ ' + (data.error || 'Failed'))
 
     if (!data.token) {
       recordFailedLogin(cleanUser)
-      return res.status(401).json({ error: 'Invalid credentials' })
+      return res.status(401).json({ error: data.error || 'Invalid credentials or department' })
     }
     recordSuccessfulLogin(cleanUser)
     res.json(data)
   } catch (e) {
-    res.status(500).json({ error: 'Login service unavailable' })
+    console.error('[LOGIN ERROR]', e.message)
+    res.status(500).json({ error: 'Login service unavailable: ' + e.message })
   }
 })
 
