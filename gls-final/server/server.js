@@ -53,7 +53,52 @@ UserFileSchema.index({ username: 1 })
 const UserFile = mongoose.models.UserFile || mongoose.model('UserFile', UserFileSchema)
 
 const app = express()
-const MOODLE = 'https://btech.glsmoodle.in'
+
+// ══════════════════════════════════════════
+// DEPARTMENT MOODLE ENDPOINTS REGISTRY
+// ══════════════════════════════════════════
+const DEPARTMENT_ENDPOINTS = {
+  btech: 'https://btech.glsmoodle.in',
+  bca: 'https://www.glsufcait.org/glsmoodle',
+  bcait: 'https://www.glsufcait.org/glsmoodle',
+  fcait: 'https://www.glsufcait.org/glsmoodle',
+  mca: 'https://mca.glsmoodle.in',
+}
+
+const DEFAULT_MOODLE = 'https://btech.glsmoodle.in'
+
+function resolveTargetMoodle(req) {
+  // 1. Department header
+  const deptHeader = (req.headers['x-moodle-dept'] || req.headers['x-department-id'] || '').toLowerCase().trim()
+  if (deptHeader && DEPARTMENT_ENDPOINTS[deptHeader]) {
+    return DEPARTMENT_ENDPOINTS[deptHeader]
+  }
+
+  // 2. Query / Body parameter
+  const deptParam = (req.query?.dept || req.body?.dept || '').toLowerCase().trim()
+  if (deptParam && DEPARTMENT_ENDPOINTS[deptParam]) {
+    return DEPARTMENT_ENDPOINTS[deptParam]
+  }
+
+  // 3. Custom Moodle URL (strictly validated against approved GLS domains)
+  const customUrl = (req.headers['x-moodle-url'] || req.query?.moodle_url || req.body?.moodle_url || '').trim()
+  if (customUrl) {
+    try {
+      const parsed = new URL(customUrl)
+      if (
+        (parsed.hostname.endsWith('.glsmoodle.in') ||
+         parsed.hostname === 'glsmoodle.in' ||
+         parsed.hostname === 'www.glsufcait.org' ||
+         parsed.hostname === 'glsufcait.org') &&
+        parsed.protocol === 'https:'
+      ) {
+        return customUrl.replace(/\/+$/, '')
+      }
+    } catch (e) {}
+  }
+
+  return DEFAULT_MOODLE
+}
 
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
@@ -75,7 +120,24 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://www.googletagmanager.com', 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'blob:'],
       workerSrc: ["'self'", 'blob:', 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com'],
-      connectSrc: ["'self'", MOODLE, 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://*.googletagmanager.com', 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://cdnjs.cloudflare.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://formsubmit.co', 'blob:'],
+      connectSrc: [
+        "'self'",
+        'https://btech.glsmoodle.in',
+        'https://*.glsmoodle.in',
+        'https://glsmoodle.in',
+        'https://www.glsufcait.org',
+        'https://glsufcait.org',
+        'https://*.google-analytics.com',
+        'https://*.analytics.google.com',
+        'https://*.googletagmanager.com',
+        'https://cdn.jsdelivr.net',
+        'https://unpkg.com',
+        'https://cdnjs.cloudflare.com',
+        'https://fonts.googleapis.com',
+        'https://fonts.gstatic.com',
+        'https://formsubmit.co',
+        'blob:'
+      ],
       frameSrc: ["'self'", 'https://docs.google.com', 'blob:'],
       ...(process.env.NODE_ENV === 'production' ? { upgradeInsecureRequests: [] } : {}),
     },
@@ -299,7 +361,7 @@ const ALLOWED_PARAM_KEYS = new Set([
 function isWhitelistedParamKey(key) {
   if (!key || typeof key !== 'string') return false
   if (ALLOWED_PARAM_KEYS.has(key)) return true
-  // Match bracketed parameters like courseids[0], plugindata[files_filemanager], etc.
+  // Match bracketed parameters like courseids[0], plugindata[files_filemanager], plugindata[assignfeedbackcomments_editor][text], etc.
   const baseKey = key.split('[')[0]
   return ALLOWED_PARAM_KEYS.has(baseKey)
 }
@@ -308,20 +370,35 @@ function sanitizeParams(rawParamsObj) {
   const cleanParams = new URLSearchParams()
   if (!rawParamsObj || typeof rawParamsObj !== 'object') return cleanParams
 
-  for (const [key, val] of Object.entries(rawParamsObj)) {
+  function appendEntry(key, val) {
     if (!isWhitelistedParamKey(key)) {
       console.warn(`[SECURITY] Stripped unauthorized query/body parameter: '${key}'`)
-      continue
+      return
     }
 
     if (Array.isArray(val)) {
       val.forEach((item, idx) => {
-        const itemKey = key.includes('[') ? key : `${key}[${idx}]`
-        cleanParams.append(itemKey, String(item))
+        const itemKey = key.includes('[') ? `${key}[${idx}]` : `${key}[${idx}]`
+        if (typeof item === 'object' && item !== null) {
+          Object.entries(item).forEach(([subK, subV]) => {
+            appendEntry(`${itemKey}[${subK}]`, subV)
+          })
+        } else if (item !== undefined && item !== null) {
+          cleanParams.append(itemKey, String(item))
+        }
+      })
+    } else if (typeof val === 'object' && val !== null) {
+      Object.entries(val).forEach(([subKey, subVal]) => {
+        const nestedKey = key ? `${key}[${subKey}]` : subKey
+        appendEntry(nestedKey, subVal)
       })
     } else if (val !== undefined && val !== null) {
       cleanParams.append(key, String(val))
     }
+  }
+
+  for (const [key, val] of Object.entries(rawParamsObj)) {
+    appendEntry(key, val)
   }
 
   return cleanParams
@@ -331,7 +408,7 @@ function sanitizeParams(rawParamsObj) {
 // 5. TOKEN VALIDATION MIDDLEWARE
 // ══════════════════════════════════════════
 function requireToken(req, res, next) {
-  const token = req.query.wstoken || req.body?.wstoken
+  const token = req.query.wstoken || req.query.token || req.body?.wstoken || req.body?.token
   if (!token || typeof token !== 'string' || token.length < 10) {
     return res.status(401).json({ error: 'Missing or invalid token' })
   }
@@ -380,12 +457,15 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
       return res.status(429).json({ error: 'Account temporarily locked due to multiple failed login attempts. Try again in 15 minutes.' })
     }
 
+    const targetMoodle = resolveTargetMoodle(req)
+    console.log(`[PROXY] Target Moodle instance: ${targetMoodle}`)
+
     const bodyParams = new URLSearchParams()
     bodyParams.append('username', cleanUser)
     bodyParams.append('password', cleanPass)
     bodyParams.append('service', 'moodle_mobile_app')
 
-    const r = await fetch(`${MOODLE}/login/token.php`, {
+    const r = await fetch(`${targetMoodle}/login/token.php`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -412,7 +492,8 @@ app.get('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (r
   try {
     const fn = req.query.wsfunction || 'unknown'
     const cleanParams = sanitizeParams(req.query)
-    const r = await fetch(`${MOODLE}/webservice/rest/server.php?${cleanParams.toString()}`, {
+    const targetMoodle = resolveTargetMoodle(req)
+    const r = await fetch(`${targetMoodle}/webservice/rest/server.php?${cleanParams.toString()}`, {
       method: 'GET',
       headers: {
         'User-Agent': 'Moodle1.1-Proxy/1.0',
@@ -443,8 +524,9 @@ app.post('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (
     const fn = req.query.wsfunction || req.body?.wsfunction || 'unknown'
     const combined = { ...req.query, ...req.body }
     const cleanParams = sanitizeParams(combined)
+    const targetMoodle = resolveTargetMoodle(req)
 
-    const r = await fetch(`${MOODLE}/webservice/rest/server.php`, {
+    const r = await fetch(`${targetMoodle}/webservice/rest/server.php`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -528,8 +610,9 @@ app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
       })
     })
 
-    console.log('[UPLOAD] file:', req.files[0]?.originalname, req.files[0]?.size, 'bytes')
-    const r = await fetch(`${MOODLE}/webservice/upload.php?token=${encodeURIComponent(token)}`, {
+    const targetMoodle = resolveTargetMoodle(req)
+    console.log('[UPLOAD] file:', req.files[0]?.originalname, req.files[0]?.size, 'bytes, target:', targetMoodle)
+    const r = await fetch(`${targetMoodle}/webservice/upload.php?token=${encodeURIComponent(token)}`, {
       method: 'POST',
       body: form,
       headers: {
@@ -543,6 +626,63 @@ app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
   } catch (e) {
     console.log('[UPLOAD ERROR]', e.message)
     res.status(500).json({ error: 'Upload failed' })
+  }
+})
+
+// ── Proxy file downloader — stream Moodle files cleanly with token and CORS bypass
+app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
+  try {
+    const rawUrl = req.query.url
+    if (!rawUrl || typeof rawUrl !== 'string') {
+      return res.status(400).json({ error: 'File URL is required' })
+    }
+
+    let parsed
+    try {
+      parsed = new URL(rawUrl)
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid file URL' })
+    }
+
+    // SSRF protection: only allow downloads from approved GLS domains
+    if (
+      !parsed.hostname.endsWith('.glsmoodle.in') &&
+      parsed.hostname !== 'glsmoodle.in' &&
+      parsed.hostname !== 'www.glsufcait.org' &&
+      parsed.hostname !== 'glsufcait.org'
+    ) {
+      return res.status(403).json({ error: 'Unauthorized file download host' })
+    }
+
+    // Ensure token is attached if not present
+    const token = req.query.wstoken || req.query.token
+    if (token && !parsed.searchParams.has('token')) {
+      parsed.searchParams.set('token', token)
+    }
+
+    const r = await fetch(parsed.toString(), {
+      headers: {
+        'User-Agent': 'Moodle1.1-Proxy/1.0',
+      },
+      timeout: 30000
+    })
+
+    if (!r.ok) {
+      return res.status(r.status).json({ error: `Failed to fetch file from Moodle (${r.status})` })
+    }
+
+    const contentType = r.headers.get('content-type') || 'application/octet-stream'
+    res.setHeader('Content-Type', contentType)
+    const contentDisposition = r.headers.get('content-disposition')
+    if (contentDisposition) {
+      res.setHeader('Content-Disposition', contentDisposition)
+    }
+
+    // Stream file response
+    r.body.pipe(res)
+  } catch (e) {
+    console.error('[PROXY FILE ERROR]', e.message)
+    res.status(500).json({ error: 'File download failed', message: e.message })
   }
 })
 

@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { getDepartmentById, DEFAULT_DEPARTMENT, normalizeUrl } from '../utils/departments'
 
 const AuthContext = createContext(null)
 
@@ -31,6 +32,8 @@ export function AuthProvider({ children }) {
     try { return JSON.parse(u) } catch (e) { return null }
   })
   const [role, setRole] = useState(() => safeGetItem('moodle_role', 'student'))
+  const [deptId, setDeptId] = useState(() => safeGetItem('moodle_dept_id', DEFAULT_DEPARTMENT.id))
+
   // Set of course IDs this faculty member teaches (empty for students)
   const [teachingCourseIds, setTeachingCourseIds] = useState(() => {
     const t = safeGetItem('moodle_teaching_ids', null)
@@ -38,17 +41,30 @@ export function AuthProvider({ children }) {
     try { return new Set(JSON.parse(t)) } catch (e) { return new Set() }
   })
 
-  const login = useCallback((tok, userInfo, detectedRole = 'student', teachingIds = []) => {
+  const department = useMemo(() => getDepartmentById(deptId), [deptId])
+  const moodleBaseUrl = useMemo(() => normalizeUrl(department.url), [department])
+
+  const getMoodleUrl = useCallback((path = '') => {
+    if (!path) return moodleBaseUrl
+    if (path.startsWith('http://') || path.startsWith('https://')) return path
+    const cleanPath = path.startsWith('/') ? path : `/${path}`
+    return `${moodleBaseUrl}${cleanPath}`
+  }, [moodleBaseUrl])
+
+  const login = useCallback((tok, userInfo, detectedRole = 'student', teachingIds = [], selectedDeptId = DEFAULT_DEPARTMENT.id) => {
     setToken(tok)
     setUser(userInfo)
     const validRole = (detectedRole === 'faculty' && teachingIds.length > 0) ? 'faculty' : 'student'
     setRole(validRole)
     const idSet = new Set(teachingIds)
     setTeachingCourseIds(idSet)
+    setDeptId(selectedDeptId)
+
     safeSetItem('moodle_token', tok)
     safeSetItem('moodle_user', JSON.stringify(userInfo))
     safeSetItem('moodle_role', validRole)
     safeSetItem('moodle_teaching_ids', JSON.stringify(teachingIds))
+    safeSetItem('moodle_dept_id', selectedDeptId)
   }, [])
 
   const logout = useCallback(() => {
@@ -60,6 +76,7 @@ export function AuthProvider({ children }) {
     safeRemoveItem('moodle_user')
     safeRemoveItem('moodle_role')
     safeRemoveItem('moodle_teaching_ids')
+    // Keep last selected department so user doesn't have to re-select next time
   }, [])
 
   // Returns true if this faculty member teaches the given courseId
@@ -78,6 +95,10 @@ export function AuthProvider({ children }) {
       token, 
       user, 
       role: verifiedRole, 
+      department,
+      deptId,
+      moodleBaseUrl,
+      getMoodleUrl,
       teachingCourseIds, 
       login, 
       logout, 
@@ -92,3 +113,4 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
+

@@ -26,47 +26,13 @@ import { useTheme } from '../hooks/useTheme'
 import toast from 'react-hot-toast'
 import StorageModal from './StorageModal'
 
-const MOODLE = 'https://btech.glsmoodle.in'
-
-const NAV_BY_ROLE = {
-  student: {
-    primary: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/courses', icon: BookOpen, label: 'Courses' },
-      { to: '/assignments', icon: FileText, label: 'Assignments', badgeKey: 'assign' },
-      { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
-    ],
-    more: [
-      { to: '/notifications', icon: Bell, label: 'Notifications', badgeKey: 'notif' },
-      { to: '/grades', icon: Trophy, label: 'My Grades' },
-      { to: '/profile', icon: User, label: 'Profile' },
-      { to: 'https://btech.glsmoodle.in/user/preferences.php', icon: Settings, label: 'Moodle Prefs', external: true },
-    ],
-  },
-  faculty: {
-    primary: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/courses', icon: BookOpen, label: 'Courses' },
-      { to: '/assignments', icon: FileText, label: 'Assignments' },
-      { to: '/submissions', icon: Inbox, label: 'Submissions' },
-    ],
-    more: [
-      { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
-      { to: '/notifications', icon: Bell, label: 'Notifications', badgeKey: 'notif' },
-      { to: '/grades', icon: Trophy, label: 'Gradebook' },
-      { to: '/profile', icon: User, label: 'Profile' },
-      { to: 'https://btech.glsmoodle.in/user/preferences.php', icon: Settings, label: 'Moodle Prefs', external: true },
-    ],
-  },
-}
-
 const ROLE_COLORS = {
   student: { bg: 'rgba(16,185,129,0.15)', color: '#10b981', label: 'Student' },
   faculty: { bg: 'rgba(59,130,246,0.15)', color: '#3b82f6', label: 'Faculty' },
 }
 
 export default function Sidebar({ badges = {} }) {
-  const { user, logout, isFaculty } = useAuth()
+  const { user, logout, isFaculty, getMoodleUrl, department } = useAuth()
   const { isDark, toggle } = useTheme()
   const navigate = useNavigate()
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -144,8 +110,34 @@ export default function Sidebar({ badges = {} }) {
   const dispName = truncate(user?.fullname || user?.lastname || '', 20)
   const dispId = truncate(user?.username || '', 18)
   const roleKey = isFaculty ? 'faculty' : 'student'
-  const navSet = NAV_BY_ROLE[roleKey]
   const roleStyle = ROLE_COLORS[roleKey] || ROLE_COLORS.student
+
+  const navSet = {
+    primary: isFaculty ? [
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/courses', icon: BookOpen, label: 'Courses' },
+      { to: '/assignments', icon: FileText, label: 'Assignments' },
+      { to: '/submissions', icon: Inbox, label: 'Submissions' },
+    ] : [
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/courses', icon: BookOpen, label: 'Courses' },
+      { to: '/assignments', icon: FileText, label: 'Assignments', badgeKey: 'assign' },
+      { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
+    ],
+    more: isFaculty ? [
+      { to: '/calendar', icon: CalendarIcon, label: 'Calendar' },
+      { to: '/notifications', icon: Bell, label: 'Notifications', badgeKey: 'notif' },
+      { to: '/grades', icon: Trophy, label: 'Gradebook' },
+      { to: '/profile', icon: User, label: 'Profile' },
+      { to: getMoodleUrl('/user/preferences.php'), icon: Settings, label: 'Moodle Prefs', external: true },
+    ] : [
+      { to: '/notifications', icon: Bell, label: 'Notifications', badgeKey: 'notif' },
+      { to: '/grades', icon: Trophy, label: 'My Grades' },
+      { to: '/profile', icon: User, label: 'Profile' },
+      { to: getMoodleUrl('/user/preferences.php'), icon: Settings, label: 'Moodle Prefs', external: true },
+    ]
+  }
+
   const visibleMoreItems = navSet.more
 
   return (
@@ -243,7 +235,22 @@ export default function Sidebar({ badges = {} }) {
                 </button>
               </div>
               <div className="bottom-nav__meta">{dispId}</div>
-              <div className="bottom-nav__role">{roleStyle.label}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                <div className="bottom-nav__role">{roleStyle.label}</div>
+                {department?.badge && (
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    background: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--accent-bd)'
+                  }}>
+                    {department.badge}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -333,7 +333,9 @@ export default function AssignmentModal({ assignment, onClose }) {
       const itemId = uploadResult[0].itemid
       if (!itemId) throw new Error('No item ID returned from upload')
 
-      await moodle.saveSubmission(assignment.id, itemId)
+      const saveRes = await moodle.saveSubmission(assignment.id, itemId)
+      if (saveRes?.exception || saveRes?.errorcode) throw new Error(saveRes.message || saveRes.errorcode)
+
       try {
         await moodle.submitForGrading(assignment.id)
       } catch (submitErr) {
@@ -474,24 +476,31 @@ export default function AssignmentModal({ assignment, onClose }) {
 
               const handleRename = async () => {
                 const newName = window.prompt('Enter new filename:', f.filename)
-                if (!newName || newName === f.filename) return
+                if (!newName || !newName.trim() || newName.trim() === f.filename) return
 
                 setUploading(true)
                 try {
                   toast.loading('Renaming file...', { id: 'rename' })
-                  const res = await fetch(viewUrl)
-                  const blob = await res.blob()
-                  const renamedFile = new window.File([blob], newName, { type: blob.type })
+                  const blob = await moodle.fetchFileBlob(viewUrl)
+                  const renamedFile = new window.File([blob], newName.trim(), { type: blob.type || 'application/octet-stream' })
                   const uploadResult = await moodle.uploadFileToDraft(renamedFile)
+                  if (!uploadResult || uploadResult.error) throw new Error(uploadResult?.error || 'Upload to draft failed')
                   const itemId = uploadResult[0]?.itemid
-                  if (!itemId) throw new Error('Failed to create draft')
+                  if (!itemId) throw new Error('Failed to obtain draft ID from Moodle')
 
-                  await moodle.saveSubmission(assignment.id, itemId)
-                  await moodle.submitForGrading(assignment.id)
+                  const saveRes = await moodle.saveSubmission(assignment.id, itemId)
+                  if (saveRes?.exception || saveRes?.errorcode) throw new Error(saveRes.message || saveRes.errorcode)
+
+                  try {
+                    await moodle.submitForGrading(assignment.id)
+                  } catch (submitErr) {
+                    console.warn('submitForGrading warning:', submitErr)
+                  }
+
                   await refreshSubmission(assignment.id)
-
-                  toast.success('File renamed!', { id: 'rename' })
+                  toast.success('File renamed and updated on Moodle!', { id: 'rename' })
                 } catch (e) {
+                  console.error('Rename error:', e)
                   toast.error('Rename failed: ' + e.message, { id: 'rename' })
                 }
                 setUploading(false)
@@ -503,9 +512,13 @@ export default function AssignmentModal({ assignment, onClose }) {
                 setUploading(true)
                 try {
                   toast.loading('Deleting submission from Moodle...', { id: 'delete-sub' })
-                  await moodle.deleteSubmission(assignment.id)
+                  const delRes = await moodle.deleteSubmission(assignment.id)
+                  if (delRes?.exception || delRes?.errorcode) {
+                    throw new Error(delRes.message || delRes.errorcode)
+                  }
                   await refreshSubmission(assignment.id)
-                  toast.success('Submission deleted from Moodle!', { id: 'delete-sub' })
+                  setSelectedFile(null)
+                  toast.success('Submission removed from Moodle!', { id: 'delete-sub' })
                 } catch (e) {
                   console.error('Delete error:', e)
                   toast.error('Delete failed: ' + e.message, { id: 'delete-sub' })
@@ -529,9 +542,9 @@ export default function AssignmentModal({ assignment, onClose }) {
                     <div style={{ fontSize: 11, color: 'var(--text3)' }}>{f.filesize ? (f.filesize / 1024).toFixed(0) + ' KB · ' : ''}{f.timemodified ? fmt(f.timemodified) : ''}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <button disabled={uploading} onClick={handleRename} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Rename</button>
-                    <button disabled={uploading} onClick={() => fileInputRef.current.click()} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Replace</button>
-                    <button disabled={uploading} onClick={handleDeleteSubmission} style={{ padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 6, fontSize: 11, color: '#ef4444', fontWeight: 600, cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Delete</button>
+                    <button type="button" disabled={uploading} onClick={handleRename} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Rename</button>
+                    <button type="button" disabled={uploading} onClick={() => fileInputRef.current.click()} style={{ padding: '4px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, color: 'var(--text2)', cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Replace</button>
+                    <button type="button" disabled={uploading} onClick={handleDeleteSubmission} style={{ padding: '4px 8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 6, fontSize: 11, color: '#ef4444', fontWeight: 600, cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>Delete</button>
                   </div>
                 </div>
               )

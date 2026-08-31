@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppDataContext'
 
 export default function CourseCard({ course }) {
-  const { canEditCourse, isFaculty } = useAuth()
+  const { canEditCourse, isFaculty, getMoodleUrl } = useAuth()
   const { hideCourse } = useAppData()
   const navigate = useNavigate()
   const pct = course.progress ? Math.round(course.progress) : 0
@@ -16,12 +16,12 @@ export default function CourseCard({ course }) {
 
   const openMoodle = (e) => {
     e.stopPropagation()
-    window.open(`https://btech.glsmoodle.in/course/view.php?id=${course.id}`, '_blank', 'noopener,noreferrer')
+    window.open(getMoodleUrl(`/course/view.php?id=${course.id}`), '_blank', 'noopener,noreferrer')
   }
 
   const openEdit = (e) => {
     e.stopPropagation()
-    window.open(`https://btech.glsmoodle.in/course/edit.php?id=${course.id}`, '_blank', 'noopener,noreferrer')
+    window.open(getMoodleUrl(`/course/edit.php?id=${course.id}`), '_blank', 'noopener,noreferrer')
   }
 
   const canEdit = canEditCourse(course.id)

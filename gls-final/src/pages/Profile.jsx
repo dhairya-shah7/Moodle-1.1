@@ -2,13 +2,11 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useMoodle } from '../hooks/useMoodle'
 import Spinner from '../components/Spinner'
-import { Edit, ExternalLink, Key, Settings, Award, Info } from 'lucide-react'
+import { Edit, ExternalLink, Key, Settings, Award, Info, Building2 } from 'lucide-react'
 import { useTheme } from '../hooks/useTheme'
 
-const MOODLE = 'https://btech.glsmoodle.in'
-
 export default function Profile() {
-  const { user, token } = useAuth()
+  const { user, token, getMoodleUrl, department } = useAuth()
   const moodle = useMoodle()
   const { isDark } = useTheme()
   const [courses, setCourses] = useState([])
@@ -71,13 +69,24 @@ export default function Profile() {
           {(user?.lastname || user?.fullname || 'U')[0].toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-            {user?.username} {user?.fullname || user?.lastname}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
+              {user?.username} {user?.fullname || user?.lastname}
+            </div>
+            {department && (
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
+                background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent-bd)',
+                display: 'inline-flex', alignItems: 'center', gap: 4
+              }}>
+                <Building2 size={12} /> {department.name}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 13, color: grayColor }}>GLS University · Ahmedabad</div>
         </div>
         <a
-          href={`${MOODLE}/user/edit.php?id=${user?.userid}`}
+          href={getMoodleUrl(`/user/edit.php?id=${user?.userid}`)}
           target="_blank" rel="noreferrer"
           className="profile-header__btn"
         >
@@ -92,6 +101,7 @@ export default function Profile() {
           {sectionTitle('User Details')}
           {row('Full Name', user?.fullname)}
           {row('Username', user?.username)}
+          {row('Department', department?.name || 'GLS University')}
           {row('Email Address', user?.email || (user?.username ? `${user.username}@glsuniversity.ac.in` : '—'))}
           {row('Country', user?.country || 'India')}
           {row('City / Town', user?.city || 'Ahmedabad')}
@@ -100,16 +110,16 @@ export default function Profile() {
         {/* Miscellaneous */}
         {card(<>
           {sectionTitle('Miscellaneous')}
-          {link('Forum posts', `${MOODLE}/mod/forum/user.php?id=${user?.userid}`)}
-          {link('Forum discussions', `${MOODLE}/mod/forum/user.php?id=${user?.userid}&mode=discussions`)}
-          {link('Learning plans', `${MOODLE}/totara/plan/index.php`)}
+          {link('Forum posts', getMoodleUrl(`/mod/forum/user.php?id=${user?.userid}`))}
+          {link('Forum discussions', getMoodleUrl(`/mod/forum/user.php?id=${user?.userid}&mode=discussions`))}
+          {link('Learning plans', getMoodleUrl('/totara/plan/index.php'))}
         </>)}
 
         {/* Reports */}
         {card(<>
           {sectionTitle('Reports')}
-          {link('Browser sessions', `${MOODLE}/report/usersessions/user.php?userid=${user?.userid}`)}
-          {link('Grades overview', `${MOODLE}/grade/report/overview/index.php?userid=${user?.userid}`)}
+          {link('Browser sessions', getMoodleUrl(`/report/usersessions/user.php?userid=${user?.userid}`))}
+          {link('Grades overview', getMoodleUrl(`/grade/report/overview/index.php?userid=${user?.userid}`))}
         </>)}
 
         {/* Login Activity */}
@@ -140,7 +150,7 @@ export default function Profile() {
             <div className="profile-courses-cols">
               {courses.map(c => (
                 <a key={c.id}
-                  href={`${MOODLE}/course/view.php?id=${c.id}`}
+                  href={getMoodleUrl(`/course/view.php?id=${c.id}`)}
                   target="_blank" rel="noreferrer"
                   style={{ display: 'block', fontSize: 13, color: 'var(--accent)', textDecoration: 'none', marginBottom: 10, fontWeight: 500, breakInside: 'avoid' }}
                   onMouseEnter={e => e.currentTarget.style.textDecoration = 'underline'}
@@ -156,7 +166,7 @@ export default function Profile() {
         {/* Privacy */}
         {card(<>
           {sectionTitle('Privacy and Policies')}
-          {link('Data retention summary', `${MOODLE}/report/retention/index.php`)}
+          {link('Data retention summary', getMoodleUrl('/report/retention/index.php'))}
         </>)}
 
         {/* Preferences shortcut */}
@@ -164,10 +174,10 @@ export default function Profile() {
           {sectionTitle('Quick Actions')}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {[
-              { label: 'Edit Profile', url: `${MOODLE}/user/edit.php?id=${user?.userid}`, icon: Edit },
-              { label: 'Change Password', url: `${MOODLE}/login/change_password.php`, icon: Key },
-              { label: 'Preferences', url: `${MOODLE}/user/preferences.php`, icon: Settings },
-              { label: 'Grades Overview', url: `${MOODLE}/grade/report/overview/index.php?userid=${user?.userid}`, icon: Award },
+              { label: 'Edit Profile', url: getMoodleUrl(`/user/edit.php?id=${user?.userid}`), icon: Edit },
+              { label: 'Change Password', url: getMoodleUrl('/login/change_password.php'), icon: Key },
+              { label: 'Preferences', url: getMoodleUrl('/user/preferences.php'), icon: Settings },
+              { label: 'Grades Overview', url: getMoodleUrl(`/grade/report/overview/index.php?userid=${user?.userid}`), icon: Award },
             ].map(a => (
               <a key={a.label} href={a.url} target="_blank" rel="noreferrer"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, fontWeight: 600, color: 'var(--text)', textDecoration: 'none', transition: 'all 0.2s' }}

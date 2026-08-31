@@ -4,10 +4,8 @@ import { useMoodle } from '../hooks/useMoodle'
 import Spinner from '../components/Spinner'
 import { ExternalLink, Info, Award, GraduationCap, TrendingUp, BookOpen } from 'lucide-react'
 
-const MOODLE = 'https://btech.glsmoodle.in'
-
 export default function Grades() {
-  const { user } = useAuth()
+  const { user, getMoodleUrl } = useAuth()
   const moodle = useMoodle()
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,7 +47,7 @@ export default function Grades() {
             <div className="page-sub">Comprehensive overview of your performance across all subjects</div>
           </div>
           <a
-            href={`${MOODLE}/grade/report/overview/index.php?userid=${user?.userid}`}
+            href={getMoodleUrl(`/grade/report/overview/index.php?userid=${user?.userid}`)}
             target="_blank" rel="noreferrer"
             className="btn-accent"
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 12, textDecoration: 'none' }}
@@ -117,7 +115,7 @@ export default function Grades() {
                   <tr key={c.id} style={{ borderBottom: i < courses.length - 1 ? '1px solid var(--border)' : 'none', transition: 'background 0.2s' }} className="row-hover">
                     <td style={{ padding: '20px 30px' }}>
                       <a
-                        href={`${MOODLE}/grade/report/user/index.php?id=${c.id}`}
+                        href={getMoodleUrl(`/grade/report/user/index.php?id=${c.id}`)}
                         target="_blank" rel="noreferrer"
                         style={{ fontSize: 15, color: 'var(--text)', textDecoration: 'none', fontWeight: 600, display: 'block' }}
                       >

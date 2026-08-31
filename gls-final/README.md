@@ -1,6 +1,6 @@
-# GLS Dashboard
-
-A Moodle dashboard for GLS University (btech.glsmoodle.in).
+# GLS Dashboard — Moodle 1.1
+ 
+ A modern, high-performance Moodle dashboard for GLS University students and faculty across B.Tech (FoT), BCA / BCA-IT (FCAIT UG), and MCA / M.Sc(IT) (FCAIT PG).
 
 ## Deploy on Render
 
