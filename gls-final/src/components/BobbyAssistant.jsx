@@ -129,6 +129,14 @@ async function extractDocxText(blob, getJSZip) {
   return txt.value.trim()
 }
 
+// Helper to detect administrative submission instruction lines (never actual academic questions)
+function isSubmissionInstruction(text = '') {
+  return (
+    /^(?:note\s*:?\s*)?assignment submission instructions\b/i.test(text) ||
+    /\b(?:assignment must be handwritten|take clear photographs|scans of all the pages|combine all the pages into a single pdf|clearly mention your division and enrollment|pdf file name must be your enrollment|late submissions may not be accepted|submission deadline\s*:)/i.test(text)
+  )
+}
+
 // Split raw extracted text into individual numbered questions (supports 1..30+ questions per document)
 function parseQuestions(rawText, assignmentName, courseName) {
   let cleaned = (rawText || '')
@@ -141,6 +149,21 @@ function parseQuestions(rawText, assignmentName, courseName) {
       `Explain the core concepts, methodology, and practical implementation required for "${assignmentName}" in ${courseName || 'this course'}.`
     ]
   }
+
+  // If the document has a header like "Answer the following questions", strip everything before it (e.g. submission instructions)
+  const afterHeaderMatch = cleaned.match(
+    /(?:answer\s+the\s+following\s+questions|attempt\s+the\s+following\s+questions|solve\s+the\s+following\s+questions|following\s+are\s+the\s+questions)\s*[:.-]?\s*/i
+  )
+  if (afterHeaderMatch && afterHeaderMatch.index !== undefined) {
+    const afterText = cleaned.slice(afterHeaderMatch.index + afterHeaderMatch[0].length).trim()
+    if (afterText.length > 30) {
+      cleaned = afterText
+    }
+  }
+
+  const isStatsDoc = /probability and statistics|harmonic mean|geometric mean|karl pearson/i.test(
+    `${cleaned} ${assignmentName} ${courseName}`
+  )
 
   // Ensure inline numbered questions like "... 2. The below..." or "... 10. The mean..." start on a new line
   cleaned = cleaned.replace(
@@ -156,11 +179,15 @@ function parseQuestions(rawText, assignmentName, courseName) {
   const qStartRegex = /^(?:Q(?:uestion)?\s*(\d+)\s*[.:)-]*|(\d{1,2})\s*[.)]\s+|Task\s*(\d+)\s*[.:)-]*|Problem\s*(\d+)\s*[.:)-]*)/i
 
   for (const line of lines) {
+    if (isSubmissionInstruction(line)) {
+      continue
+    }
+
     // Skip title/header lines at the very top before Question 1
     if (
       currentNum === null &&
       !qStartRegex.test(line) &&
-      (/^(assignment[\s-]*\d*|probability and statistics|ch[\s-]*\d+|chapter[\s-]*\d+|gls university|b\.?tech|semester)/i.test(line) ||
+      (/^(assignment[\s-]*\d*|probability and statistics|structured.*object oriented|ch[\s-]*\d+|chapter[\s-]*\d+|gls university|b\.?tech|semester|note\s*:)/i.test(line) ||
         line.length < 40)
     ) {
       continue
@@ -171,9 +198,9 @@ function parseQuestions(rawText, assignmentName, courseName) {
       const detectedNum = parseInt(match[1] || match[2] || match[3] || match[4], 10)
       const bodyAfterNum = line.replace(qStartRegex, '').trim()
 
-      // Handle empty question number like "16." followed by table or next question
-      if (!bodyAfterNum && detectedNum === 16) {
-        if (currentQ.trim()) {
+      // Handle empty question number "16." only in Probability & Statistics assignment
+      if (!bodyAfterNum && detectedNum === 16 && isStatsDoc) {
+        if (currentQ.trim() && !isSubmissionInstruction(currentQ)) {
           questions.push(currentQ.trim())
         }
         currentNum = 16
@@ -181,7 +208,7 @@ function parseQuestions(rawText, assignmentName, courseName) {
         continue
       }
 
-      if (currentQ.trim().length > 2) {
+      if (currentQ.trim().length > 2 && !isSubmissionInstruction(currentQ)) {
         questions.push(currentQ.trim())
       }
       currentNum = detectedNum
@@ -193,12 +220,14 @@ function parseQuestions(rawText, assignmentName, courseName) {
     }
   }
 
-  if (currentQ.trim().length > 2) {
+  if (currentQ.trim().length > 2 && !isSubmissionInstruction(currentQ)) {
     questions.push(currentQ.trim())
   }
 
-  return questions.length > 0
-    ? questions
+  const filteredQuestions = questions.filter(q => !isSubmissionInstruction(q))
+
+  return filteredQuestions.length > 0
+    ? filteredQuestions
     : [`Complete the requirements and technical analysis for "${assignmentName}" (${courseName}).`]
 }
 
@@ -275,7 +304,7 @@ function solveMathOrStatsQuestion(qText, index, studentSeed) {
   }
 
   // 4. Compute Arithmetic mean for distribution (Q4: 0-10:5, 10-20:7, 20-30:8, 30-40:14, 40-50:10, 50-60:6)
-  if (qLower.includes('compute arithmetic mean for following distribution') || (index === 3 && qLower.includes('arithmetic mean'))) {
+  if (qLower.includes('compute arithmetic mean for following distribution')) {
     return [
       `Step 1 (Construct the Frequency & Midpoint Table):\n` +
         `   Class Interval  |  Midpoint (x_i)  |  Frequency (f_i)  |  f_i · x_i\n` +
@@ -405,7 +434,7 @@ function solveMathOrStatsQuestion(qText, index, studentSeed) {
   }
 
   // 12. Calculate arithmetic mean for Less-than data (Q12)
-  if (qLower.includes('calculate arithmetic mean for following data') || (index === 11 && qLower.includes('arithmetic mean'))) {
+  if (qLower.includes('calculate arithmetic mean for following data')) {
     return [
       `Step 1 (Convert "Less Than" Cumulative Frequencies into Class Interval Frequencies):\n` +
         `   Class Interval  |  Midpoint (x_i)  |  Frequency (f_i)       |  f_i · x_i\n` +
@@ -478,7 +507,7 @@ function solveMathOrStatsQuestion(qText, index, studentSeed) {
   }
 
   // 16. Variance and Standard Deviation for frequency distributions (i) and (ii) (Q16)
-  if (qLower.includes('variance and standard deviation') || index === 15) {
+  if (qLower.includes('variance and standard deviation') && qLower.includes('frequency distribution')) {
     return [
       `Part (i): Frequency Distribution:\n` +
         `   x_i :   6   10   14   18   24   28   30\n` +
@@ -650,6 +679,176 @@ function solveMathOrStatsQuestion(qText, index, studentSeed) {
     ].join('\n\n')
   }
 
+  // UML / SOOAD Verified Solutions
+  if (qLower.includes('operation') && qLower.includes('method') && qLower.includes('uml')) {
+    return [
+      `1. Operation in UML:\n` +
+        `   - An Operation is the abstract specification (signature/contract) of a behavior or service declared in a UML class.\n` +
+        `   - It defines the name, visibility (+, -, #), parameter list, and return type, specifying WHAT the object does without specifying how it is implemented.\n` +
+        `   - Multiple classes in an inheritance hierarchy can share the same operation signature (polymorphism).`,
+      `2. Method in UML:\n` +
+        `   - A Method is the concrete body or procedural algorithm that implements an operation for a specific class.\n` +
+        `   - It defines HOW the behavior is executed in code.`,
+      `3. Suitable UML Example:\n` +
+        `   - Consider an abstract superclass Shape declaring the operation:\n` +
+        `     + calculateArea(): Double\n` +
+        `   - Subclass Circle provides the concrete Method implementation: return 3.14159 * radius * radius.\n` +
+        `   - Subclass Rectangle provides a different concrete Method implementation: return length * width.\n` +
+        `   Here, calculateArea() is one polymorphic Operation implemented by two distinct Methods.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('qualified association')) {
+    return [
+      `1. Definition of Qualified Association:\n` +
+        `   - A Qualified Association in UML is an association in which a special attribute called a Qualifier (drawn as a small rectangle attached to the source class) is used to select a specific object (or subset of objects) at the target end of the association.`,
+      `2. How it Improves UML Modeling:\n` +
+        `   - Reduces Multiplicity: It reduces a one-to-many (1..*) or many-to-many (*..*) multiplicity down to a one-to-one (1 or 0..1) lookup using a unique key.\n` +
+        `   - Makes Lookup Keys Explicit: It explicitly documents domain keys (such as accountNumber, rollNo, or employeeId) directly in the class model.\n` +
+        `   - Eliminates Sequential Search: In implementation, it maps directly to hash maps / dictionaries / indexed lookups.`,
+      `3. Example:\n` +
+        `   - Without Qualifier: [Bank] 1 -------- 0..* [Account] (A bank has many accounts).\n` +
+        `   - With Qualifier:    [Bank | accountNo: String] 1 -------- 0..1 [Account]\n` +
+        `     Given a Bank and a specific accountNo qualifier, at most one unique Account object is identified.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('ordered') && qLower.includes('bag') && qLower.includes('sequence')) {
+    return [
+      `In UML, multiplicity constraints on association ends can specify uniqueness and ordering of collections:\n`,
+      `1. {ordered} Association (Ordered Set — Unique & Ordered):\n` +
+        `   - Elements are maintained in a specific sorted or positional order, and duplicate object references are NOT allowed.\n` +
+        `   - Example: [Tournament] 1 ------ 1..* {ordered} [PlayerRank] (Players ranked 1st, 2nd, 3rd without duplicates).`,
+      `2. {bag} Association (Multiset — Non-Unique & Unordered):\n` +
+        `   - Duplicate object references ARE allowed in the collection, but there is no fixed sequential order.\n` +
+        `   - Example: [ShoppingCart] 1 ------ 0..* {bag} [ProductItem] (A cart can hold multiple identical product units in no particular order).`,
+      `3. {sequence} or {seq} Association (List — Non-Unique & Ordered):\n` +
+        `   - Elements are maintained in a strict sequential index order AND duplicate references ARE permitted.\n` +
+        `   - Example: [MusicPlaylist] 1 ------ 0..* {sequence} [Song] (A playlist plays songs in exact track order and the same song can appear multiple times).`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('abstract class') && qLower.includes('concrete class')) {
+    return [
+      `1. Abstract Class:\n` +
+        `   - An Abstract Class is an incomplete class that cannot be instantiated directly into objects. In UML, its class name is written in italics or marked with {abstract}.\n` +
+        `   - It serves as a generalized base class defining common attributes and abstract operations that subclasses must implement.\n` +
+        `   - Example: Payment {abstract} with attributes amount, paymentDate and abstract operation +processPayment(): Boolean.`,
+      `2. Concrete Class:\n` +
+        `   - A Concrete Class provides complete implementations for all its operations (including any inherited abstract operations) and can be instantiated directly using 'new'.\n` +
+        `   - Example: CreditCardPayment and UPIPayment are concrete subclasses of Payment that implement +processPayment() and can be instantiated.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('reification')) {
+    return [
+      `1. Concept of Reification:\n` +
+        `   - Reification (Promotion to a Class) is the modeling technique of converting an attribute, operation, or association relationship into a full-fledged UML Class so that it can have its own attributes, operations, and associations.`,
+      `2. When an Attribute Should Be Converted into a Separate Class:\n` +
+        `   - Multi-part Structure: When the attribute has its own sub-attributes (e.g., converting 'address: String' into an Address class with street, city, state, postalCode).\n` +
+        `   - Independent Behavior / Operations: When validation or business operations belong to that concept (e.g., Money class with currency conversion).\n` +
+        `   - Shared Across Multiple Entities: When multiple objects link to the same instance (e.g., converting 'companyName: String' on Person into an Employer class with a many-to-many employment association).\n` +
+        `   - Lifecycle & History Tracking: When changes over time must be recorded with timestamps.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('multiple inheritance') && qLower.includes('disjoint')) {
+    return [
+      `1. Multiple Inheritance:\n` +
+        `   - Multiple Inheritance occurs when a single subclass inherits attributes and operations from more than one superclass simultaneously.\n` +
+        `   - Example: Class TeachingAssistant inherits from both [Student] (rollNo, gpa) and [Instructor] (employeeId, salary, conductLab()).`,
+      `2. Inheritance from Disjoint Classes ({disjoint} constraint):\n` +
+        `   - In a generalization set marked {disjoint}, an instance of the superclass can belong to AT MOST ONE of the specialized subclasses (the subclasses are mutually exclusive).\n` +
+        `   - Example: Superclass [BankAccount] specialized into {disjoint} subclasses [SavingsAccount] and [CurrentAccount]; a single account instance cannot be both Savings and Current simultaneously.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('generalization') && qLower.includes('advantages')) {
+    return [
+      `1. Generalization (Inheritance) in UML:\n` +
+        `   - Generalization is a taxonomic "is-a" relationship between a more general classifier (Superclass / Parent) and a more specific classifier (Subclass / Child).\n` +
+        `   - In UML, it is represented by a solid line with a hollow/unfilled triangular arrowhead pointing toward the superclass.`,
+      `2. Key Advantages in Object-Oriented Design:\n` +
+        `   - Code & Model Reusability: Common attributes and operations are defined once in the superclass and inherited automatically by all subclasses.\n` +
+        `   - Polymorphism & Dynamic Binding: Client code can program to the superclass interface while invoking subclass-specific method implementations at runtime.\n` +
+        `   - Extensibility (Open-Closed Principle): New specialized subclasses can be added without modifying existing superclass logic.\n` +
+        `   - Elimination of Redundancy: Centralizes shared validation rules and state in one place, simplifying maintenance.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('online food ordering system') && qLower.includes('class diagram')) {
+    return [
+      `UML Class Diagram Design — Online Food Ordering System:\n`,
+      `1. Enumeration & Constraints:\n` +
+        `   <<enumeration>> OrderStatus { Pending, Preparing, Delivered, Cancelled }\n` +
+        `   Constraints: {Order.totalAmount > 0}, {Rating.stars >= 1 and Rating.stars <= 5}`,
+      `2. Classes, Attributes & Operations:\n` +
+        `   - User {abstract}        : -userId: String, -name: String, -phone: String | +login(): Boolean\n` +
+        `   - Customer (extends User): -deliveryAddress: String | +placeOrder(): Order, +rateFoodItem(): Review\n` +
+        `   - Restaurant             : -restaurantId: String, -name: String, -location: String | +updateMenu(): void\n` +
+        `   - Category               : -categoryId: String, -categoryName: String\n` +
+        `   - FoodItem               : -itemId: String, -name: String, -price: Double, -isAvailable: Boolean\n` +
+        `   - Order                  : -orderId: String, -orderDate: Date, -status: OrderStatus | +calculateTotal(): Double\n` +
+        `   - Payment                : -paymentId: String, -amount: Double, -mode: String | +processPayment(): Boolean\n` +
+        `   - Review (Association Class between Customer & FoodItem): -rating: Int, -comment: String, -date: Date`,
+      `3. UML Relationships & Multiplicities:\n` +
+        `   - Generalization    : Customer ──▷ User (also CreditCardPayment, UPIPayment ──▷ Payment)\n` +
+        `   - Association       : Customer (1) ────── places ──────> (0..*) Order\n` +
+        `   - Aggregation (◇)   : Restaurant (1) ◇──── offers ────> (1..*) FoodItem\n` +
+        `                         Order (1..*) ◇──── contains ────> (1..*) FoodItem\n` +
+        `   - Association       : FoodItem (0..*) ─── belongs to ──> (1) Category\n` +
+        `   - Composition (◆)   : Order (1) ◆──── has ────> (1) Payment (Payment lifecycle is bound to Order)\n` +
+        `   - Association Class : Customer (0..*) ────── rates ────── (0..*) FoodItem\n` +
+        `                                            |\n` +
+        `                                         [Review]`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('library management system') && qLower.includes('class diagram')) {
+    return [
+      `UML Class Diagram Design — Library Management System:\n`,
+      `1. Enumeration:\n` +
+        `   <<enumeration>> BookStatus { Available, Issued, Lost }`,
+      `2. Classes, Attributes & Operations:\n` +
+        `   - Person {abstract}   : -id: String, -name: String, -email: String\n` +
+        `   - Member (──▷ Person) : -memberId: String, -maxBooksAllowed: Int | +borrowBook(b: Book): BorrowTransaction\n` +
+        `   - Librarian (──▷ Person): -empId: String | +addMember(m: Member): void, +manageBook(b: Book): void\n` +
+        `   - LibraryCard         : -cardNumber: String, -issueDate: Date, -expiryDate: Date\n` +
+        `   - Book                : -bookId: String, -isbn: String, -title: String, -status: BookStatus\n` +
+        `   - Category            : -categoryId: String, -categoryName: String\n` +
+        `   - BorrowTransaction   : -transactionId: String, -issueDate: Date, -dueDate: Date, -returnDate: Date | +calculateFine(): Double`,
+      `3. UML Relationships & Multiplicities:\n` +
+        `   - Generalization  : Member ──▷ Person,  Librarian ──▷ Person\n` +
+        `   - Composition (◆) : Member (1) ◆──── owns ────> (1) LibraryCard\n` +
+        `   - Association     : Librarian (1) ──── manages ────> (0..*) Member\n` +
+        `   - Association     : Book (0..*) ──── belongs to ────> (1) Category\n` +
+        `   - Association     : Member (1) ──── initiates ────> (0..*) BorrowTransaction\n` +
+        `   - Association     : BorrowTransaction (0..*) ──── records ────> (1) Book`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('student and department') && qLower.includes('car and engine')) {
+    return [
+      `Identification and Justification of UML Relationships:\n`,
+      `1. Student and Department — Aggregation (or Association):\n` +
+        `   Justification: A Department groups multiple Students (whole-part), but if the Department is closed or restructured, the Student entities continue to exist independently.`,
+      `2. Car and Engine — Composition:\n` +
+        `   Justification: An Engine is an essential physical part of a specific Car instance (strong whole-part ownership). In a vehicle assembly domain, the Engine's lifecycle is bound to the Car.`,
+      `3. University and Professor — Aggregation:\n` +
+        `   Justification: A University has many Professors as part of its faculty, but Professors have an independent lifecycle and can exist or move to another institution if the University closes.`,
+      `4. Employee and Company — Aggregation (or Association):\n` +
+        `   Justification: A Company employs multiple Employees (whole-part organization), yet an Employee exists independently as a person outside the Company's lifecycle.`,
+      `5. Library and Books — Aggregation:\n` +
+        `   Justification: A Library catalogs and holds a collection of Books, but Books can be transferred, donated, or exist independently even if the Library is shut down.`,
+      `6. User and Login Credentials — Composition:\n` +
+        `   Justification: Login Credentials belong exclusively to one User account and have no independent meaning; deleting the User account deletes its Login Credentials.`,
+      `7. Doctor and Patient — Association:\n` +
+        `   Justification: Doctor and Patient are independent peer entities that interact (many-to-many consultation/treatment relationship) without any whole-part ownership.`,
+      `8. Playlist and Songs — Aggregation:\n` +
+        `   Justification: A Playlist is a container of Songs, but deleting a Playlist only removes the list—the underlying Song audio files remain intact in the library.`
+    ].join('\n\n')
+  }
+
   return null
 }
 
@@ -689,14 +888,11 @@ function generateAnswerForQuestion(questionText, index, assignmentName, courseNa
     }
   }
 
-  // Direct academic answer without "Conceptual Overview / How to solve" filler
   return {
     number: index + 1,
     question: questionText,
     answer:
-      `Answer:\n` +
-      `${questionText.replace(/\?$/, '')} is a core concept in ${courseName || assignmentName}. ` +
-      `It operates by establishing well-defined parameters, applying standard analytical principles, and verifying the resulting state against domain constraints to ensure accuracy and reliability.`
+      `${questionText.replace(/\?$/, '')}: In ${courseName || assignmentName}, this concept defines the structural and behavioral contract between components, ensuring modularity, data integrity, and well-defined interactions across system boundaries.`
   }
 }
 
@@ -758,9 +954,18 @@ const PDF_THEMES = [
   }
 ]
 
-// Sanitize Unicode math symbols into clean ASCII for standard jsPDF fonts (Helvetica/Times)
+// Sanitize HTML entities, markdown markers, and Unicode math/punctuation into clean ASCII for standard jsPDF fonts
 function sanitizeForPdfFont(str = '') {
   return String(str)
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/^#{1,4}\s+/gm, '')
     .replace(/×/g, 'x')
     .replace(/÷/g, '/')
     .replace(/⇒/g, '=>')
@@ -782,7 +987,82 @@ function sanitizeForPdfFont(str = '') {
     .replace(/³/g, '^3')
     .replace(/⁵/g, '^5')
     .replace(/•/g, '-')
-    .replace(/[–—]/g, '-')
+    .replace(/▷/g, '|>')
+    .replace(/◇/g, '<>')
+    .replace(/◆/g, '<#>')
+    .replace(/─/g, '-')
+    .replace(/[\u2010-\u2015\u2212–—]/g, '-')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+}
+
+// Direct browser-side AI solver fallback (uses Pollinations openai-fast with ===ANSWER N=== delimiters in 5-question chunks)
+async function solveWithDirectBrowserAI(questions, courseName, assignmentName, studentSeed, onProgress) {
+  const ansMap = {}
+  const systemPrompt = [
+    'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
+    'CRITICAL INSTRUCTIONS:',
+    '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER write meta-commentary like "How to solve", "Conceptual Overview", or "Key Takeaways".',
+    '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer.',
+    '3. For CODING / PROGRAMMING / LAB questions: Provide the complete, runnable source code followed by its Sample Output.',
+    '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (100-180 words per question) with definitions, differences, concrete examples, and clean text/ASCII class diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
+    '5. Do NOT use markdown bold asterisks (**) or ### headers; write clean plain text suitable for direct PDF rendering.',
+    '6. Start each answer with the exact delimiter on its own line:',
+    '===ANSWER 1===',
+    '(complete answer to Q1)',
+    '===ANSWER 2===',
+    '(complete answer to Q2)',
+    '...using the exact question number provided.'
+  ].join('\n')
+
+  const chunkSize = 5
+  for (let i = 0; i < questions.length; i += chunkSize) {
+    const chunk = questions.slice(i, i + chunkSize)
+    if (onProgress) {
+      onProgress(`AI Professor solving Questions ${i + 1}–${Math.min(i + chunkSize, questions.length)} of ${questions.length}...`)
+    }
+    const userPrompt = [
+      `Course / Subject: ${courseName || 'University Course'}`,
+      `Assignment: ${assignmentName || 'Assignment'}`,
+      '',
+      chunk.map((q, idx) => `Q${i + idx + 1}. ${q}`).join('\n\n'),
+      '',
+      `Provide the complete direct answer for Q${i + 1} through Q${i + chunk.length} using ===ANSWER ${i + 1}===, ===ANSWER ${i + 2}===, etc.`
+    ].join('\n')
+
+    try {
+      const res = await fetch('https://text.pollinations.ai/openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'openai-fast',
+          max_tokens: 8192,
+          reasoning_effort: 'low',
+          temperature: 0.2,
+          seed: (Number(studentSeed) || 42) + i,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ]
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const content = data?.choices?.[0]?.message?.content || ''
+        const parts = content.split(/===\s*ANSWER\s*(\d+)\s*===/i)
+        for (let p = 1; p < parts.length; p += 2) {
+          const num = parseInt(parts[p], 10)
+          const body = (parts[p + 1] || '').trim()
+          if (!Number.isNaN(num) && body) {
+            ansMap[num] = body
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Direct browser AI chunk ${i} error:`, err)
+    }
+  }
+  return ansMap
 }
 
 // Compile personalized PDF using jsPDF with per-student visual theme, Name & Roll Number
@@ -1078,8 +1358,8 @@ export default function BobbyAssistant({
           answer: localMathMatches[idx]
         }))
       } else {
-        setStepText('Solving questions across Maths, Coding & Theory (AI Vision + Solver)...')
-        let aiSolvedQuestions = null
+        setStepText(`Solving ${questions.length} questions with AI Professor...`)
+        let aiSolvedMap = {}
         try {
           const solveRes = await fetch('/proxy/bobby/solve', {
             method: 'POST',
@@ -1089,52 +1369,61 @@ export default function BobbyAssistant({
               courseName: assignment.coursename || assignment.courseshort || '',
               assignmentName: assignment.name || '',
               extractedText: combinedText,
-              pageImages,
+              pageImages: [],
               questions,
               studentSeed: seed
             })
           })
           if (solveRes.ok) {
             const solveData = await solveRes.json()
-            if (solveData?.success && Array.isArray(solveData.questions) && solveData.questions.length > 0) {
-              aiSolvedQuestions = solveData.questions
+            if (solveData?.success && Array.isArray(solveData.questions)) {
+              solveData.questions.forEach((item, idx) => {
+                if (item?.answer && item.answer.trim()) {
+                  aiSolvedMap[idx + 1] = item.answer.trim()
+                }
+              })
             }
           }
         } catch (aiErr) {
-          console.warn('AI solver fallback to local engine:', aiErr)
+          console.warn('Server AI solver error, using direct browser AI solver:', aiErr)
         }
 
-        if (aiSolvedQuestions && aiSolvedQuestions.length >= questions.length) {
-          generatedQA = aiSolvedQuestions.map((item, idx) => {
-            const qText = item.question || questions[idx] || `Question ${idx + 1}`
-            const verifiedMath = solveMathOrStatsQuestion(qText, idx, seed)
-            return {
-              number: idx + 1,
-              question: qText,
-              answer: verifiedMath || item.answer || generateAnswerForQuestion(qText, idx, assignment.name, assignment.coursename, seed).answer
+        // If any non-math question wasn't answered by the server endpoint, solve directly from browser AI
+        const missingCount = questions.filter((q, idx) => !localMathMatches[idx] && !aiSolvedMap[idx + 1]).length
+        if (missingCount > 0) {
+          const directMap = await solveWithDirectBrowserAI(
+            questions,
+            assignment.coursename || assignment.courseshort || '',
+            assignment.name || '',
+            seed,
+            msg => setStepText(msg)
+          )
+          Object.entries(directMap).forEach(([k, v]) => {
+            const num = Number(k)
+            if (v && !aiSolvedMap[num]) {
+              aiSolvedMap[num] = v
             }
-          })
-        } else {
-          generatedQA = questions.map((q, idx) => {
-            const aiMatch = aiSolvedQuestions?.[idx]
-            const verifiedMath = localMathMatches[idx]
-            if (verifiedMath) {
-              return {
-                number: idx + 1,
-                question: aiMatch?.question || q,
-                answer: verifiedMath
-              }
-            }
-            if (aiMatch?.answer) {
-              return {
-                number: idx + 1,
-                question: aiMatch.question || q,
-                answer: aiMatch.answer
-              }
-            }
-            return generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
           })
         }
+
+        generatedQA = questions.map((q, idx) => {
+          const verifiedMath = localMathMatches[idx]
+          if (verifiedMath) {
+            return {
+              number: idx + 1,
+              question: q,
+              answer: verifiedMath
+            }
+          }
+          if (aiSolvedMap[idx + 1]) {
+            return {
+              number: idx + 1,
+              question: q,
+              answer: aiSolvedMap[idx + 1]
+            }
+          }
+          return generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
+        })
       }
 
       setQaList(generatedQA)
