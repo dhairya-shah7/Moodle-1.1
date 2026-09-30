@@ -3,13 +3,14 @@ import { createPortal } from 'react-dom'
 import { 
   X, XCircle, CheckCircle2, Clock, FileText, 
   BarChart3, FileSpreadsheet, Paperclip, File as FileIcon, 
-  UploadCloud, AlertTriangle, Loader2, Pencil
+  UploadCloud, AlertTriangle, Loader2, Pencil, Bot
 } from 'lucide-react'
 import { useMoodle } from '../hooks/useMoodle'
 import { useAppData } from '../context/AppDataContext'
 import { fmt, daysLeft, assignStatus, getViewerUrl, sanitizeHtml, forceDownload } from '../utils/helpers'
 import toast from 'react-hot-toast'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import BobbyAssistant from './BobbyAssistant'
 
 const MAX_SIZE = 2 * 1024 * 1024
 
@@ -240,7 +241,7 @@ const compressDOCX = async (file) => {
 
 export default function AssignmentModal({ assignment, onClose }) {
   const moodle = useMoodle()
-  const { submissions, refreshSubmission, ignoredAssignmentIds = [], ignoreAssignment, unignoreAssignment, role } = useAppData()
+  const { submissions, refreshSubmission, ignoredAssignmentIds = [], ignoreAssignment, unignoreAssignment, role, user } = useAppData()
   const sub = submissions[assignment?.id]
   const isIgnored = ignoredAssignmentIds.includes(assignment?.id)
   const submittedFiles = sub?.lastattempt?.submission?.plugins
@@ -257,6 +258,62 @@ export default function AssignmentModal({ assignment, onClose }) {
   const compressorFileInputRef = useRef()
   const [compressDragOver, setCompressDragOver] = useState(false)
   const [compressing, setCompressing] = useState(false)
+  const [bobbyOpen, setBobbyOpen] = useState(false)
+  const [bobbyTargetFile, setBobbyTargetFile] = useState(null)
+
+  const allAssignmentFiles = [
+    ...(assignment?.introattachments || []),
+    ...(assignment?.introfiles || [])
+  ].filter((f, idx, arr) => f?.fileurl && arr.findIndex(x => x.fileurl === f.fileurl) === idx)
+
+  const bobbySupportedFiles = allAssignmentFiles.filter(f => {
+    const ext = f.filename?.split('.').pop()?.toLowerCase()
+    return ext === 'pdf' || ext === 'docx'
+  })
+
+  const handleConfirmBobbySubmit = async (generatedPdfFile) => {
+    if (!generatedPdfFile) return
+    setUploading(true)
+    setError('')
+    try {
+      let fileToUpload = generatedPdfFile
+      if (fileToUpload.size > MAX_SIZE) {
+        toast.loading('Compressing generated PDF below 2MB...', { id: 'bobby-submit' })
+        fileToUpload = await compressPDF(fileToUpload, 0.55, 1.1)
+      }
+      toast.loading('Uploading completed assignment to Moodle...', { id: 'bobby-submit' })
+      const uploadResult = await moodle.uploadFileToDraft(fileToUpload)
+      if (!uploadResult) throw new Error('No response from server')
+      if (uploadResult.error) throw new Error(uploadResult.error)
+      if (!Array.isArray(uploadResult)) throw new Error(JSON.stringify(uploadResult))
+      if (uploadResult[0]?.error) throw new Error(uploadResult[0].error)
+
+      const itemId = uploadResult[0].itemid
+      if (!itemId) throw new Error('No item ID returned from upload')
+
+      const saveRes = await moodle.saveSubmission(assignment.id, itemId)
+      if (saveRes?.exception || saveRes?.errorcode) throw new Error(saveRes.message || saveRes.errorcode)
+
+      try {
+        await moodle.submitForGrading(assignment.id)
+      } catch (submitErr) {
+        console.warn('submitForGrading non-fatal warning:', submitErr)
+      }
+
+      await refreshSubmission(assignment.id)
+      setUploadDone(true)
+      setSelectedFile(null)
+      setBobbyOpen(false)
+      toast.success('Bobby submitted your assignment to Moodle!', { id: 'bobby-submit' })
+    } catch (e) {
+      console.error('Bobby submit error:', e)
+      setError(e.message)
+      toast.error('Submission failed: ' + e.message, { id: 'bobby-submit' })
+      throw e
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleCompressAndSelect = async (file) => {
     if (!file) return
@@ -428,20 +485,21 @@ export default function AssignmentModal({ assignment, onClose }) {
         </div>
 
         {/* Teacher-attached assignment files */}
-        {assignment.introattachments?.length > 0 && (
+        {allAssignmentFiles.length > 0 && (
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text3)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Assignment Files</div>
-            {assignment.introattachments.map((f, i) => {
+            {allAssignmentFiles.map((f, i) => {
               const ext = f.filename?.split('.').pop()?.toLowerCase()
+              const isBobbySupported = ext === 'pdf' || ext === 'docx'
               const Icon = ext === 'pdf' ? FileText : ext === 'docx' || ext === 'doc' ? FileText : ext === 'pptx' || ext === 'ppt' ? BarChart3 : ext === 'xlsx' ? FileSpreadsheet : Paperclip
               const iconColor = ext === 'pdf' ? '#ef4444' : ext === 'docx' || ext === 'doc' ? '#3b82f6' : ext === 'pptx' || ext === 'ppt' ? '#f59e0b' : ext === 'xlsx' ? '#10b981' : 'var(--text3)'
               
               const downloadUrl = f.fileurl + (f.fileurl.includes('?') ? '&' : '?') + 'token=' + moodle.token
               const viewerUrl = getViewerUrl(downloadUrl, f.filename)
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, marginBottom: 6, border: '1px solid var(--border)' }}>
-                  <Icon size={20} style={{ color: iconColor }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, marginBottom: 6, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                  <Icon size={20} style={{ color: iconColor, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 140 }}>
                     {viewerUrl ? (
                       <a href={viewerUrl} target="_blank" rel="noreferrer"
                         style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
@@ -453,17 +511,122 @@ export default function AssignmentModal({ assignment, onClose }) {
                     )}
                     {f.filesize > 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>{(f.filesize / 1024).toFixed(0)} KB</div>}
                   </div>
-                  <a 
-                    href={downloadUrl} 
-                    onClick={(e) => { e.preventDefault(); forceDownload(downloadUrl, f.filename) }}
-                    className="btn-dl"
-                  >
-                    Download
-                  </a>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isBobbySupported && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBobbyTargetFile(f)
+                          setBobbyOpen(true)
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 12px',
+                          borderRadius: 8,
+                          border: '1px solid var(--accent)',
+                          background: 'var(--accent-soft)',
+                          color: 'var(--accent)',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Bot size={14} /> Send to Bobby
+                      </button>
+                    )}
+                    <a 
+                      href={downloadUrl} 
+                      onClick={(e) => { e.preventDefault(); forceDownload(downloadUrl, f.filename) }}
+                      className="btn-dl"
+                    >
+                      Download
+                    </a>
+                  </div>
                 </div>
               )
             })}
           </div>
+        )}
+
+        {/* Bobby AI Assistant Trigger / Panel (Strictly uses only the assignment's own file/prompt) */}
+        {!bobbyOpen ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '12px 16px',
+              marginBottom: 20,
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06))',
+              border: '1px solid var(--accent-bd)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 9,
+                  background: 'var(--accent)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <Bot size={18} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>Complete with Bobby (AI Assistant)</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
+                  {bobbySupportedFiles.length > 0
+                    ? `Sends "${bobbySupportedFiles[0].filename}" to Bobby & generates your personalized PDF`
+                    : 'Sends this assignment prompt to Bobby & generates your personalized PDF'}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setBobbyTargetFile(bobbySupportedFiles[0] || null)
+                setBobbyOpen(true)
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                borderRadius: 9,
+                border: 'none',
+                background: 'var(--accent)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 12.5,
+                cursor: 'pointer',
+                boxShadow: '0 2px 10px var(--accent-glow)'
+              }}
+            >
+              <Bot size={15} /> Send to Bobby
+            </button>
+          </div>
+        ) : (
+          <BobbyAssistant
+            assignment={assignment}
+            attachmentFile={bobbyTargetFile}
+            user={user}
+            moodle={moodle}
+            getPdfjs={getPdfjs}
+            getJSZip={getJSZip}
+            getJsPDF={getJsPDF}
+            onConfirmSubmit={handleConfirmBobbySubmit}
+            onClose={() => setBobbyOpen(false)}
+          />
         )}
 
         {/* Previously submitted files */}
