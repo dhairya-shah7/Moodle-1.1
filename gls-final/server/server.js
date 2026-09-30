@@ -729,7 +729,7 @@ app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
   }
 })
 
-// ── 100% Model-Free Academic Factual Resolver (Wikipedia / MediaWiki REST API — Zero AI/LLM)
+// ── Dynamic Academic Question Resolver (Zero-Key Free AI + Wikipedia Encyclopedia)
 app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
   try {
     const {
@@ -747,6 +747,10 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
         .replace(/&quot;/gi, '"')
         .replace(/&#0?39;/gi, "'")
         .replace(/&nbsp;/gi, ' ')
+        .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
+        .replace(/```/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/^#{1,4}\s+/gm, '')
         .trim()
     }
 
@@ -758,17 +762,52 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
         return [diffMatch[1].trim(), diffMatch[2].trim()]
       }
       const stripped = cleanText(qText)
+        .replace(/\([^()]*\)/g, ' ')
+        .replace(/\n[\s\S]*$/, '')
         .replace(
-          /^(?:explain|define|describe|discuss|what\s+is|what\s+are|write\s+a\s+short\s+note\s+on|state\s+and\s+explain|elaborate\s+on|how\s+does|why\s+is|list\s+the\s+advantages\s+of|give\s+an?\s+example\s+of)\s+/i,
+          /^(?:explain|define|describe|discuss|what\s+is\s+a?|what\s+are\s+the|what\s+are|write\s+a\s+short\s+note\s+on|state\s+and\s+explain|elaborate\s+on|how\s+does|why\s+is|list\s+the\s+advantages\s+of|give\s+an?\s+example\s+of)\s+/i,
           ''
         )
         .split(/[.?]/)[0]
-        .replace(/\b(?:with\s+(?:a\s+)?suitable\s+example.*|in\s+detail.*|and\s+how\s+it.*|and\s+its\s+advantages.*)$/i, '')
+        .replace(/\b(?:with\s+(?:a\s+)?(?:suitable\s+)?example.*|in\s+detail.*|and\s+how\s+it.*|and\s+its\s+advantages.*|and\s+functions\s+of.*)$/i, '')
         .trim()
       return [stripped || cleanText(qText).slice(0, 80)]
     }
 
-    const lookupQuestionOnWikipedia = async (qText) => {
+    const solveQuestionDynamically = async (qText) => {
+      const cleanCourse = cleanText(courseName || assignmentName || 'University Course')
+      const systemPrompt =
+        `You are an expert university professor in "${cleanCourse}". ` +
+        `Provide a direct, complete, step-by-step academic solution to the exact question asked. ` +
+        `If the question contains a mathematical problem, expression, automaton (NFA/DFA), or grammar (LL(1), left recursion, etc.), solve that EXACT example step by step. ` +
+        `If the question asks for code, provide clean runnable code and sample output. ` +
+        `Never output meta-commentary or generic filler.`
+
+      try {
+        const aiRes = await fetch('https://text.pollinations.ai/openai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'openai',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Course: ${cleanCourse}\nQuestion: ${qText}\n\nProvide the complete, direct solution:` }
+            ],
+            temperature: 0.2
+          }),
+          timeout: 12000
+        })
+        if (aiRes.ok) {
+          const aiData = await aiRes.json()
+          const content = aiData?.choices?.[0]?.message?.content
+          if (content && content.trim().length > 40) {
+            return cleanText(content)
+          }
+        }
+      } catch {
+        // Fallback to Wikipedia lookup below
+      }
+
       const topics = extractTopics(qText)
       const sections = []
       const wikiHeaders = {
@@ -804,16 +843,16 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
 
     const resolvedQuestions = await Promise.all(
       validQuestions.map(async (qText, idx) => {
-        const wikiAnswer = await lookupQuestionOnWikipedia(qText)
+        const answer = await solveQuestionDynamically(qText)
         return {
           number: idx + 1,
           question: qText,
-          answer: wikiAnswer
+          answer
         }
       })
     )
 
-    console.log(`[BOBBY SOLVE MODEL-FREE] ✅ Resolved ${resolvedQuestions.filter(q => q.answer).length}/${validQuestions.length} questions for "${assignmentName}"`)
+    console.log(`[BOBBY SOLVE] ✅ Resolved ${resolvedQuestions.filter(q => q.answer).length}/${validQuestions.length} questions for "${assignmentName}"`)
     return res.json({ success: true, questions: resolvedQuestions })
   } catch (e) {
     console.error('[BOBBY SOLVE ERROR]', e.message)

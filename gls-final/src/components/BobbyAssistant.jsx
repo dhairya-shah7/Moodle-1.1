@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import {
   parseQuestions,
   solveMathOrStatsQuestion,
+  fetchDynamicAiAnswer,
   fetchWikipediaFactualAnswer,
   synthesizeUniversalAcademicAnswer,
   cleanAcademicText
@@ -268,22 +269,22 @@ function sanitizeForPdfFont(str = '') {
     .replace(/[\u201C\u201D]/g, '"')
 }
 
-// 100% Model-Free Factual Knowledge Resolver (Wikipedia / MediaWiki REST API) for any unseen topic
+// Dynamic Question-Specific Resolver (Zero-Key AI + Wikipedia Encyclopedia) for any unseen topic
 async function solveWithFactualEncyclopedia(questions, courseName, assignmentName, onProgress, existingMap = {}, localMatches = []) {
   const ansMap = { ...existingMap }
 
   for (let idx = 0; idx < questions.length; idx++) {
     if (localMatches[idx] || ansMap[idx + 1]) continue
     if (onProgress) {
-      onProgress(`Resolving Question ${idx + 1} of ${questions.length} via Factual Knowledge Engine...`)
+      onProgress(`Solving Question ${idx + 1} of ${questions.length}...`)
     }
     try {
-      const wikiAnswer = await fetchWikipediaFactualAnswer(questions[idx], courseName || assignmentName)
-      if (wikiAnswer) {
-        ansMap[idx + 1] = cleanAiAnswerText(wikiAnswer)
+      const dynamicAnswer = await fetchDynamicAiAnswer(questions[idx], courseName, assignmentName)
+      if (dynamicAnswer) {
+        ansMap[idx + 1] = cleanAiAnswerText(dynamicAnswer)
       }
     } catch (err) {
-      console.warn(`Wikipedia factual lookup Q${idx + 1} error:`, err)
+      console.warn(`Dynamic resolver Q${idx + 1} error:`, err)
     }
   }
 
