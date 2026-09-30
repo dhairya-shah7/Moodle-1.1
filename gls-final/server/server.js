@@ -280,8 +280,8 @@ const dinoLimiter = rateLimit({
   message: { error: 'Too many score submissions. Slow down.' },
 })
 
-app.use(express.json({ limit: '1mb' }))
-app.use(express.urlencoded({ extended: true, limit: '1mb' }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Strict File Upload Filter against Viruses, Executables, Shells, Double Extensions & Zip Bombs
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'txt'])
@@ -725,6 +725,194 @@ app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
   } catch (e) {
     console.error('[PROXY FILE ERROR]', e.message)
     res.status(500).json({ error: 'File download failed', message: e.message })
+  }
+})
+
+// ── Universal Subject-Agnostic AI Assignment Solver (Vision + Text for Maths, Coding & Any Theory Subject)
+app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
+  try {
+    const {
+      courseName = '',
+      assignmentName = '',
+      extractedText = '',
+      pageImages = [],
+      questions = [],
+      studentSeed = 0
+    } = req.body || {}
+
+    const systemPrompt = [
+      'You are Bobby, an expert university professor and universal academic solver capable of solving assignments across ANY subject (Mathematics, Statistics, Computer Science, Programming, Engineering, Physics, Electronics, Management, Commerce, Humanities, Law, Sciences, or any other course).',
+      'CRITICAL INSTRUCTIONS:',
+      '1. Read BOTH the extracted text and any attached page images carefully. Many PDFs contain scanned tables, frequency distributions, bar charts, diagrams, or mathematical formulas inside the page images.',
+      '2. Identify EVERY single question in the assignment in exact sequential order (e.g., Q1 to Q20). Do NOT merge multiple questions together and do NOT skip any question.',
+      '3. Give ONLY the direct, complete, accurate answer/solution for each question. NEVER write meta-commentary like "How to solve", "Conceptual Overview", "Methodology", or "Key Takeaways".',
+      '4. For MATHEMATICS / STATISTICS / NUMERICAL / QUANTITATIVE questions: Provide a proper, complete mathematical solution with clear step-by-step calculations, formulas used, intermediate table/substitution values, and the exact Final Answer at the end.',
+      '5. For CODING / PROGRAMMING / LAB questions: Provide the complete, runnable, well-structured source code followed by its expected Sample Output.',
+      '6. For THEORY / CONCEPTUAL / ANY SUBJECT questions: Write a direct, comprehensive, accurate academic answer addressing the exact question asked.',
+      '7. Use clean plain-text formatting inside the answer string (use newlines for steps/tables/code blocks; avoid LaTeX wrappers like \\( or \\frac so it renders cleanly in standard PDF fonts).',
+      '8. Return ONLY valid JSON with this exact schema: {"questions":[{"number":1,"question":"Clean question text","answer":"Complete direct step-by-step solution or answer"}]}'
+    ].join('\n')
+
+    const userTextPrompt = [
+      `Course / Subject: ${courseName || 'University Course'}`,
+      `Assignment Title: ${assignmentName || 'Assignment'}`,
+      `Student Variation Seed: ${studentSeed}`,
+      extractedText ? `\n--- EXTRACTED ASSIGNMENT TEXT ---\n${String(extractedText).slice(0, 18000)}` : '',
+      Array.isArray(questions) && questions.length > 0
+        ? `\n--- PARSED QUESTION LIST (${questions.length} questions detected) ---\n` +
+          questions.map((q, i) => `Q${i + 1}. ${q}`).join('\n\n')
+        : '',
+      '\nSolve every question completely with direct answers (and full step-by-step calculations for any math/numerical questions). Return strictly JSON: {"questions":[{"number":1,"question":"...","answer":"..."}]}'
+    ].filter(Boolean).join('\n')
+
+    const validImages = Array.isArray(pageImages)
+      ? pageImages.filter(img => typeof img === 'string' && img.startsWith('data:image/')).slice(0, 6)
+      : []
+
+    const extractJsonArray = (rawStr) => {
+      if (!rawStr || typeof rawStr !== 'string') return null
+      const cleaned = rawStr.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+      try {
+        const parsed = JSON.parse(cleaned)
+        if (Array.isArray(parsed)) return parsed
+        if (parsed && Array.isArray(parsed.questions)) return parsed.questions
+      } catch (_) {
+        const objMatch = cleaned.match(/\{[\s\S]*"questions"\s*:\s*\[[\s\S]*\][\s\S]*\}/)
+        if (objMatch) {
+          try {
+            const p = JSON.parse(objMatch[0])
+            if (p && Array.isArray(p.questions)) return p.questions
+          } catch (_) {}
+        }
+        const arrMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/)
+        if (arrMatch) {
+          try {
+            const p = JSON.parse(arrMatch[0])
+            if (Array.isArray(p)) return p
+          } catch (_) {}
+        }
+      }
+      return null
+    }
+
+    let solvedList = null
+
+    // 1. Optional Google Gemini API Key if configured in environment
+    if (!solvedList && process.env.GEMINI_API_KEY) {
+      try {
+        const parts = [{ text: `${systemPrompt}\n\n${userTextPrompt}` }]
+        for (const dataUrl of validImages) {
+          const [meta, b64] = dataUrl.split(',')
+          const mimeMatch = meta.match(/data:(image\/[a-zA-Z0-9+.-]+);base64/)
+          if (b64) {
+            parts.push({
+              inlineData: {
+                mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg',
+                data: b64
+              }
+            })
+          }
+        }
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts }],
+              generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+            }),
+            timeout: 50000
+          }
+        )
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json()
+          const textOut = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          solvedList = extractJsonArray(textOut)
+        }
+      } catch (gemErr) {
+        console.warn('[BOBBY GEMINI FALLBACK]', gemErr.message)
+      }
+    }
+
+    // 2. Zero-config OpenAI-compatible Multimodal Vision & Text Solver (Pollinations OpenAI / Custom OPENAI_API_KEY)
+    const callOpenAICompatible = async (includeImages) => {
+      const userContent = [{ type: 'text', text: userTextPrompt }]
+      if (includeImages && validImages.length > 0) {
+        for (const dataUrl of validImages) {
+          userContent.push({
+            type: 'image_url',
+            image_url: { url: dataUrl }
+          })
+        }
+      }
+
+      const apiUrl = process.env.OPENAI_API_KEY
+        ? 'https://api.openai.com/v1/chat/completions'
+        : 'https://text.pollinations.ai/openai'
+
+      const headers = { 'Content-Type': 'application/json' }
+      if (process.env.OPENAI_API_KEY) {
+        headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`
+      }
+
+      const aiRes = await fetch(apiUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : 'openai',
+          temperature: 0.2,
+          seed: Number(studentSeed) || 42,
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: includeImages && validImages.length > 0 ? userContent : userTextPrompt }
+          ]
+        }),
+        timeout: 55000
+      })
+
+      if (!aiRes.ok) {
+        throw new Error(`AI endpoint status ${aiRes.status}`)
+      }
+      const aiData = await aiRes.json()
+      const msgContent = aiData?.choices?.[0]?.message?.content || ''
+      return extractJsonArray(msgContent)
+    }
+
+    if (!solvedList) {
+      try {
+        solvedList = await callOpenAICompatible(validImages.length > 0)
+      } catch (visionErr) {
+        console.warn('[BOBBY VISION RETRY TEXT-ONLY]', visionErr.message)
+        if (validImages.length > 0) {
+          try {
+            solvedList = await callOpenAICompatible(false)
+          } catch (txtErr) {
+            console.warn('[BOBBY TEXT-ONLY ERROR]', txtErr.message)
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(solvedList) && solvedList.length > 0) {
+      const normalized = solvedList
+        .filter(item => item && (item.question || item.answer))
+        .map((item, idx) => ({
+          number: idx + 1,
+          question: String(item.question || questions[idx] || `Question ${idx + 1}`).trim(),
+          answer: String(item.answer || '').trim()
+        }))
+      if (normalized.length > 0) {
+        console.log(`[BOBBY SOLVE] ✅ Solved ${normalized.length} questions for "${assignmentName}"`)
+        return res.json({ success: true, questions: normalized })
+      }
+    }
+
+    return res.json({ success: false, questions: [] })
+  } catch (e) {
+    console.error('[BOBBY SOLVE ERROR]', e.message)
+    res.status(200).json({ success: false, error: e.message, questions: [] })
   }
 })
 
