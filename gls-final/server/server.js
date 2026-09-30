@@ -729,162 +729,92 @@ app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
   }
 })
 
-// ── Universal Subject-Agnostic AI Assignment Solver (Vision + Text for Maths, Coding & Any Theory Subject)
+// ── 100% Model-Free Academic Factual Resolver (Wikipedia / MediaWiki REST API — Zero AI/LLM)
 app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
   try {
     const {
       courseName = '',
       assignmentName = '',
       extractedText = '',
-      questions = [],
-      studentSeed = 0
+      questions = []
     } = req.body || {}
 
-    const cleanAiText = (str = '') => {
+    const cleanText = (str = '') => {
       return String(str)
         .replace(/&amp;/gi, '&')
         .replace(/&lt;/gi, '<')
         .replace(/&gt;/gi, '>')
         .replace(/&quot;/gi, '"')
         .replace(/&#0?39;/gi, "'")
-        .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
-        .replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)')
-        .replace(/\\pm\b/g, '+-')
-        .replace(/\\times\b/g, 'x')
-        .replace(/\\cdot\b/g, '*')
-        .replace(/\\(?:le|leq)\b/g, '<=')
-        .replace(/\\(?:ge|geq)\b/g, '>=')
-        .replace(/\\neq\b/g, '!=')
-        .replace(/\\approx\b/g, '~=')
-        .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
-        .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
-        .replace(/```/g, '')
-        .replace(/\*\*/g, '')
-        .replace(/^#{1,4}\s+/gm, '')
+        .replace(/&nbsp;/gi, ' ')
         .trim()
     }
 
-    const systemPrompt = [
-      'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Operating Systems, DBMS, Networks, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
-      'CRITICAL INSTRUCTIONS:',
-      '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER repeat the question as a statement and NEVER write meta-commentary like "How to solve", "is a core concept in...", "Conceptual Overview", or "Key Takeaways".',
-      '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer. Write clean plain-text math like x = (-b +- sqrt(b^2 - 4ac)) / (2a) instead of LaTeX \\frac or \\( \\).',
-      '3. For CODING / PROGRAMMING / LAB questions: Provide the complete, runnable source code followed by its Sample Output.',
-      '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (90-160 words per question) with definitions, differences, concrete examples, and clean text/ASCII diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
-      '5. Do NOT use markdown bold asterisks (**), ### headers, or LaTeX backslashes; write clean plain text suitable for direct PDF rendering.',
-      '6. Start each answer with the exact delimiter on its own line:',
-      '===ANSWER 1===',
-      '(complete direct answer to Q1)',
-      '===ANSWER 2===',
-      '(complete direct answer to Q2)',
-      '...using the exact question number provided.'
-    ].join('\n')
+    const extractTopics = (qText = '') => {
+      const diffMatch = qText.match(
+        /(?:differentiate\s+between|distinguish\s+between|difference\s+between|compare\s+and\s+contrast|compare)\s+([^.?]+?)\s+(?:and|vs\.?|versus)\s+([^.?]+)/i
+      )
+      if (diffMatch) {
+        return [diffMatch[1].trim(), diffMatch[2].trim()]
+      }
+      const stripped = cleanText(qText)
+        .replace(
+          /^(?:explain|define|describe|discuss|what\s+is|what\s+are|write\s+a\s+short\s+note\s+on|state\s+and\s+explain|elaborate\s+on|how\s+does|why\s+is|list\s+the\s+advantages\s+of|give\s+an?\s+example\s+of)\s+/i,
+          ''
+        )
+        .split(/[.?]/)[0]
+        .replace(/\b(?:with\s+(?:a\s+)?suitable\s+example.*|in\s+detail.*|and\s+how\s+it.*|and\s+its\s+advantages.*)$/i, '')
+        .trim()
+      return [stripped || cleanText(qText).slice(0, 80)]
+    }
+
+    const lookupQuestionOnWikipedia = async (qText) => {
+      const topics = extractTopics(qText)
+      const sections = []
+      const wikiHeaders = {
+        'User-Agent': 'GLSUniversityMoodlePortal/1.1 (Academic Research Resolver)'
+      }
+
+      for (const topic of topics.slice(0, 2)) {
+        try {
+          const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&utf8=&format=json&srlimit=2`
+          const sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
+          if (!sRes.ok) continue
+          const sData = await sRes.json()
+          const bestHit = sData?.query?.search?.[0]
+          if (!bestHit?.title) continue
+
+          const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bestHit.title)}`
+          const sumRes = await fetch(sumUrl, { headers: wikiHeaders, timeout: 6000 })
+          if (!sumRes.ok) continue
+          const sumData = await sumRes.json()
+          if (sumData?.extract && sumData.extract.length > 40) {
+            sections.push(`${bestHit.title}:\n${cleanText(sumData.extract)}`)
+          }
+        } catch {
+          // Ignore individual topic lookup error
+        }
+      }
+      return sections.length > 0 ? sections.join('\n\n') : ''
+    }
 
     const validQuestions = Array.isArray(questions) && questions.length > 0
-      ? questions.map(q => cleanAiText(q)).filter(Boolean)
-      : [cleanAiText(extractedText || assignmentName || 'Solve the assignment')]
+      ? questions.map(q => cleanText(q)).filter(Boolean)
+      : [cleanText(extractedText || assignmentName)]
 
-    const parseDelimitedAnswers = (rawText, startIndex, count) => {
-      const ansMap = {}
-      if (!rawText || typeof rawText !== 'string') return ansMap
-      const parts = rawText.split(/===\s*ANSWER\s*Q?(\d+)\s*===/i)
-      if (parts.length >= 3) {
-        for (let i = 1; i < parts.length; i += 2) {
-          const num = parseInt(parts[i], 10)
-          const body = cleanAiText(parts[i + 1] || '')
-          if (!Number.isNaN(num) && body) {
-            ansMap[num] = body
-          }
+    const resolvedQuestions = await Promise.all(
+      validQuestions.map(async (qText, idx) => {
+        const wikiAnswer = await lookupQuestionOnWikipedia(qText)
+        return {
+          number: idx + 1,
+          question: qText,
+          answer: wikiAnswer
         }
-        return ansMap
-      }
-      if (count === 1) {
-        const singleClean = cleanAiText(rawText.replace(/^===\s*ANSWER\s*\d+\s*===/i, ''))
-        if (singleClean) {
-          ansMap[startIndex + 1] = singleClean
-        }
-      }
-      return ansMap
-    }
-
-    const callAiMessages = async (messages, seedVal) => {
-      const apiUrl = process.env.OPENAI_API_KEY
-        ? 'https://api.openai.com/v1/chat/completions'
-        : 'https://text.pollinations.ai/openai'
-
-      const headers = { 'Content-Type': 'application/json' }
-      if (process.env.OPENAI_API_KEY) {
-        headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`
-      }
-
-      const aiRes = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: process.env.OPENAI_API_KEY ? 'gpt-4o-mini' : 'openai-fast',
-          max_tokens: 8192,
-          reasoning_effort: 'low',
-          temperature: 0.2,
-          seed: seedVal,
-          messages
-        }),
-        timeout: 50000
       })
+    )
 
-      if (!aiRes.ok) {
-        throw new Error(`AI endpoint status ${aiRes.status}`)
-      }
-      const aiData = await aiRes.json()
-      return aiData?.choices?.[0]?.message?.content || ''
-    }
-
-    const solveChunk = async (chunkQuestions, startIndex) => {
-      const userPrompt = [
-        `Course / Subject: ${cleanAiText(courseName) || 'University Course'}`,
-        `Assignment: ${cleanAiText(assignmentName) || 'Assignment'}`,
-        '',
-        chunkQuestions.map((q, idx) => `Q${startIndex + idx + 1}. ${q}`).join('\n\n'),
-        '',
-        `Provide the complete direct answer for Q${startIndex + 1} through Q${startIndex + chunkQuestions.length} using ===ANSWER ${startIndex + 1}===, ===ANSWER ${startIndex + 2}===, etc.`
-      ].join('\n')
-
-      const content = await callAiMessages(
-        [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        (Number(studentSeed) || 42) + startIndex
-      )
-      return parseDelimitedAnswers(content, startIndex, chunkQuestions.length)
-    }
-
-    const combinedAnswerMap = {}
-    const chunkSize = 12
-    for (let i = 0; i < validQuestions.length; i += chunkSize) {
-      if (i > 0) {
-        await new Promise(r => setTimeout(r, 2000))
-      }
-      const chunk = validQuestions.slice(i, i + chunkSize)
-      try {
-        const chunkMap = await solveChunk(chunk, i)
-        Object.assign(combinedAnswerMap, chunkMap)
-      } catch (chunkErr) {
-        console.warn(`[BOBBY SOLVE CHUNK ${i} ERROR]`, chunkErr.message)
-      }
-    }
-
-    const solvedCount = Object.keys(combinedAnswerMap).length
-    if (solvedCount > 0) {
-      const normalized = validQuestions.map((qText, idx) => ({
-        number: idx + 1,
-        question: qText,
-        answer: combinedAnswerMap[idx + 1] || ''
-      }))
-      console.log(`[BOBBY SOLVE] ✅ Solved ${solvedCount}/${validQuestions.length} questions for "${assignmentName}"`)
-      return res.json({ success: true, questions: normalized })
-    }
-
-    return res.json({ success: false, questions: [] })
+    console.log(`[BOBBY SOLVE MODEL-FREE] ✅ Resolved ${resolvedQuestions.filter(q => q.answer).length}/${validQuestions.length} questions for "${assignmentName}"`)
+    return res.json({ success: true, questions: resolvedQuestions })
   } catch (e) {
     console.error('[BOBBY SOLVE ERROR]', e.message)
     res.status(200).json({ success: false, error: e.message, questions: [] })
