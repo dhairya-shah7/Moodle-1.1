@@ -197,7 +197,12 @@ app.use('/proxy', (req, res, next) => {
 // Login: relaxed for btech, completely removed for other departments (BCA, MCA, FCAIT)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 40,
+  keyGenerator: (req) => {
+    const user = String(req.body?.username || '').trim().toLowerCase()
+    return user ? `login:${user}:${req.ip}` : `login-ip:${req.ip}`
+  },
+  validate: false,
   message: { error: 'Too many login attempts. Please try again in a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -236,10 +241,15 @@ function recordSuccessfulLogin(username) {
   failedLoginTracker.delete(String(username).toLowerCase())
 }
 
-// API: relaxed for btech (2000/min), removed for other departments
+// API: keyed per student token so 100+ students on shared campus Wi-Fi never collide
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 2000,
+  max: 3000,
+  keyGenerator: (req) => {
+    const tok = req.query?.wstoken || req.query?.token || req.body?.wstoken || req.body?.token
+    return tok ? `api:${tok}` : `api-ip:${req.ip}`
+  },
+  validate: false,
   message: { error: 'Rate limit exceeded. Slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -248,10 +258,15 @@ const apiLimiter = rateLimit({
   }
 })
 
-// Upload: relaxed for btech, removed for other departments
+// Upload: keyed per student token so 100+ students submitting assignments simultaneously never collide
 const uploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 50,
+  max: 120,
+  keyGenerator: (req) => {
+    const tok = req.body?.token || req.query?.token || req.headers['x-moodle-token']
+    return tok ? `upload:${tok}` : `upload-ip:${req.ip}`
+  },
+  validate: false,
   message: { error: 'Too many upload attempts. Try again later.' },
   skip: (req) => {
     return resolveDept(req) !== 'btech'
