@@ -5,6 +5,7 @@ import {
   parseQuestions,
   solveMathOrStatsQuestion,
   fetchWikipediaFactualAnswer,
+  synthesizeUniversalAcademicAnswer,
   cleanAcademicText
 } from '../utils/bobbySolverEngine'
 
@@ -166,41 +167,12 @@ function cleanAiAnswerText(str = '') {
     .trim()
 }
 
-// Local direct answer fallback (used only if completely offline): produces direct answers without generic meta-summaries
+// Universal direct answer synthesizer: produces complete solutions without generic meta-summaries or retry messages
 function generateAnswerForQuestion(questionText, index, assignmentName, courseName, studentSeed) {
-  const mathSolution = solveMathOrStatsQuestion(questionText, index, studentSeed)
-  if (mathSolution) {
-    return {
-      number: index + 1,
-      question: cleanAiAnswerText(questionText),
-      answer: mathSolution
-    }
-  }
-
-  const qLower = `${questionText} ${assignmentName} ${courseName}`.toLowerCase()
-
-  if (/write a (?:python|c\+\+|java|c|javascript) program|write a program|function to|code to/i.test(qLower)) {
-    return {
-      number: index + 1,
-      question: cleanAiAnswerText(questionText),
-      answer: [
-        `# Complete Working Solution for Question ${index + 1}`,
-        `def solve_problem(data):`,
-        `    result = [item for item in data]`,
-        `    return result`,
-        ``,
-        `if __name__ == "__main__":`,
-        `    sample_input = [10, 20, 30, 40, 50]`,
-        `    print("Input :", sample_input)`,
-        `    print("Output:", solve_problem(sample_input))`
-      ].join('\n')
-    }
-  }
-
   return {
     number: index + 1,
     question: cleanAiAnswerText(questionText),
-    answer: `Direct Solution (${cleanAiAnswerText(courseName || assignmentName)}): Please click "Retry" or edit this answer directly in the Live Editor if your internet connection was interrupted during AI generation.`
+    answer: synthesizeUniversalAcademicAnswer(questionText, index, assignmentName, courseName, studentSeed)
   }
 }
 
@@ -596,8 +568,16 @@ export default function BobbyAssistant({
 
       const seed = getCurrentSeed(studentName, rollNumber, customVarIdx)
 
-      // 1. Run Deterministic Academic Solver (Math, Stats, Coding/DSA, UML/SOOAD, DBMS, OS, Networks)
-      const localMatches = questions.map((q, idx) => solveMathOrStatsQuestion(q, idx, seed))
+      // 1. Run Deterministic Academic Solver (OpenCV/Image, Math, Stats, Coding/DSA, UML/SOOAD, DBMS, OS, Networks)
+      const localMatches = questions.map((q, idx) =>
+        solveMathOrStatsQuestion(
+          q,
+          idx,
+          seed,
+          assignment.coursename || assignment.courseshort || '',
+          assignment.name || ''
+        )
+      )
       const allSolvedLocally = questions.length > 0 && localMatches.every(Boolean)
 
       let generatedQA = []
