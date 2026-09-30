@@ -1438,18 +1438,37 @@ app.get(['/sw.js', '/service-worker.js'], (req, res) => {
   res.status(404).setHeader('Cache-Control', 'no-cache, no-store, must-revalidate').send('ServiceWorker disabled')
 })
 
-// Serve built React frontend with no-cache headers for index.html and JS assets
+// Serve built React frontend with no-cache headers for index.html and JS/MJS assets
 app.use(express.static(path.join(__dirname, '../dist'), {
   etag: true,
   lastModified: true,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    } else if (filePath.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
     } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
       res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
     }
   }
 }))
+
+// Ensure any request for pdf.worker*.mjs always serves the active worker bundle (never index.html)
+app.get('/assets/pdf.worker*.mjs', (req, res) => {
+  try {
+    const assetsDir = path.join(__dirname, '../dist/assets')
+    if (fs.existsSync(assetsDir)) {
+      const workerFile = fs.readdirSync(assetsDir).find(f => f.startsWith('pdf.worker') && f.endsWith('.mjs'))
+      if (workerFile) {
+        res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
+        return res.sendFile(path.join(assetsDir, workerFile))
+      }
+    }
+  } catch (e) {}
+  res.status(404).end()
+})
 
 // Catch-all: send React app for any non-API route (React Router support)
 app.get('*', (req, res) => {

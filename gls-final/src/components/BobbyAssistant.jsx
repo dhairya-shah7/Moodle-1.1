@@ -30,15 +30,24 @@ function stripHtml(html = '') {
 async function extractPdfData(blob, getPdfjs) {
   const pdfjsLib = await getPdfjs()
   if (!pdfjsLib) throw new Error('PDF reader library could not be loaded.')
+  if (typeof window !== 'undefined' && !window.pdfjsWorker) {
+    try {
+      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
+      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
+    } catch (workerErr) {
+      console.warn('Could not load pdf.worker.min.mjs:', workerErr)
+    }
+  }
   const arrayBuffer = await fileOrBlobToArrayBuffer(blob)
   let pdf
   try {
-    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
   } catch (err) {
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+    if (typeof window !== 'undefined' && !window.pdfjsWorker) {
+      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
+      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
     }
-    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
   }
 
   let fullText = ''

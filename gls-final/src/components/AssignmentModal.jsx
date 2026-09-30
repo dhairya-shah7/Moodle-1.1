@@ -72,6 +72,15 @@ const getPdfjs = async () => {
       pdfjs = window.pdfjsLib
     }
   }
+  // Ensure globalThis.pdfjsWorker.WorkerMessageHandler is registered for pdfjs-dist v6 main-thread/fake-worker execution
+  if (typeof window !== 'undefined' && !window.pdfjsWorker) {
+    try {
+      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
+      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
+    } catch (workerErr) {
+      console.warn('Could not import pdf.worker.min.mjs directly:', workerErr)
+    }
+  }
   if (pdfjs && pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
     pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
   }
@@ -111,14 +120,15 @@ const compressPDF = async (file, quality = 0.6, scale = 1.3) => {
   const arrayBuffer = await file.arrayBuffer()
   let pdf
   try {
-    pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
   } catch (err) {
-    console.warn('PDF worker load failed, using inline rendering fallback...', err)
+    console.warn('PDF worker load failed, using main-thread WorkerMessageHandler fallback...', err)
     try {
-      if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+      if (typeof window !== 'undefined' && !window.pdfjsWorker) {
+        const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
+        window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
       }
-      pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
     } catch (fallbackErr) {
       throw new Error('Could not parse PDF file: ' + (fallbackErr.message || err.message))
     }
