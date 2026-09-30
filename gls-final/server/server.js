@@ -1426,7 +1426,11 @@ app.use((err, req, res, next) => {
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-  console.log(`✅ GLS Proxy running at http://localhost:${PORT}`)
-  console.log(`🛡️  Security: helmet, CORS, rate-limit, token-validation, function-whitelist`)
-})
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`✅ GLS Proxy running at http://localhost:${PORT}`)
+    console.log(`🛡️  Security: helmet, CORS, rate-limit, token-validation, function-whitelist`)
+  })
+}
+
+module.exports = app

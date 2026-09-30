@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/proxy/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/|proxy/|assets/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
