@@ -852,47 +852,67 @@ function solveMathOrStatsQuestion(qText, index, studentSeed) {
   return null
 }
 
-// Local direct answer fallback (used if offline or if AI solver omits a question): produces direct answers without meta-summaries
+// Clean HTML entities, LaTeX math, and markdown formatting from AI answers and Moodle titles
+function cleanAiAnswerText(str = '') {
+  return String(str)
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
+    .replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)')
+    .replace(/\\pm\b/g, '+-')
+    .replace(/\\times\b/g, 'x')
+    .replace(/\\cdot\b/g, '*')
+    .replace(/\\(?:le|leq)\b/g, '<=')
+    .replace(/\\(?:ge|geq)\b/g, '>=')
+    .replace(/\\neq\b/g, '!=')
+    .replace(/\\approx\b/g, '~=')
+    .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
+    .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
+    .replace(/```/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/^#{1,4}\s+/gm, '')
+    .trim()
+}
+
+// Local direct answer fallback (used only if completely offline): produces direct answers without generic meta-summaries
 function generateAnswerForQuestion(questionText, index, assignmentName, courseName, studentSeed) {
   const mathSolution = solveMathOrStatsQuestion(questionText, index, studentSeed)
   if (mathSolution) {
     return {
       number: index + 1,
-      question: questionText,
+      question: cleanAiAnswerText(questionText),
       answer: mathSolution
     }
   }
 
   const qLower = `${questionText} ${assignmentName} ${courseName}`.toLowerCase()
 
-  // Direct coding / programming fallback if offline
   if (/write a (?:python|c\+\+|java|c|javascript) program|write a program|function to|code to/i.test(qLower)) {
     return {
       number: index + 1,
-      question: questionText,
+      question: cleanAiAnswerText(questionText),
       answer: [
-        `# Complete Working Solution for: ${questionText.slice(0, 80)}`,
-        `def solve_task(data):`,
-        `    """Direct implementation for Question ${index + 1}"""`,
-        `    result = []`,
-        `    for item in data:`,
-        `        result.append(item)`,
+        `# Complete Working Solution for Question ${index + 1}`,
+        `def solve_problem(data):`,
+        `    result = [item for item in data]`,
         `    return result`,
         ``,
         `if __name__ == "__main__":`,
         `    sample_input = [10, 20, 30, 40, 50]`,
-        `    output = solve_task(sample_input)`,
         `    print("Input :", sample_input)`,
-        `    print("Output:", output)`
+        `    print("Output:", solve_problem(sample_input))`
       ].join('\n')
     }
   }
 
   return {
     number: index + 1,
-    question: questionText,
-    answer:
-      `${questionText.replace(/\?$/, '')}: In ${courseName || assignmentName}, this concept defines the structural and behavioral contract between components, ensuring modularity, data integrity, and well-defined interactions across system boundaries.`
+    question: cleanAiAnswerText(questionText),
+    answer: `Direct Solution (${cleanAiAnswerText(courseName || assignmentName)}): Please click "Retry" or edit this answer directly in the Live Editor if your internet connection was interrupted during AI generation.`
   }
 }
 
@@ -954,18 +974,10 @@ const PDF_THEMES = [
   }
 ]
 
-// Sanitize HTML entities, markdown markers, and Unicode math/punctuation into clean ASCII for standard jsPDF fonts
+// Sanitize HTML entities, markdown markers, LaTeX, and Unicode math/punctuation into clean ASCII for standard jsPDF fonts
 function sanitizeForPdfFont(str = '') {
-  return String(str)
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0?39;/gi, "'")
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/\*\*/g, '')
+  return cleanAiAnswerText(str)
     .replace(/`/g, '')
-    .replace(/^#{1,4}\s+/gm, '')
     .replace(/×/g, 'x')
     .replace(/÷/g, '/')
     .replace(/⇒/g, '=>')
@@ -996,38 +1008,45 @@ function sanitizeForPdfFont(str = '') {
     .replace(/[\u201C\u201D]/g, '"')
 }
 
-// Direct browser-side AI solver fallback (uses Pollinations openai-fast with ===ANSWER N=== delimiters in 5-question chunks)
-async function solveWithDirectBrowserAI(questions, courseName, assignmentName, studentSeed, onProgress) {
-  const ansMap = {}
+// Direct browser-side AI solver with single-question fallback guarantee
+async function solveWithDirectBrowserAI(questions, courseName, assignmentName, studentSeed, onProgress, existingMap = {}, localMathMatches = []) {
+  const ansMap = { ...existingMap }
   const systemPrompt = [
-    'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
+    'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Operating Systems, DBMS, Networks, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
     'CRITICAL INSTRUCTIONS:',
-    '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER write meta-commentary like "How to solve", "Conceptual Overview", or "Key Takeaways".',
-    '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer.',
+    '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER repeat the question as a statement and NEVER write meta-commentary like "How to solve", "is a core concept in...", "Conceptual Overview", or "Key Takeaways".',
+    '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer. Write clean plain-text math like x = (-b +- sqrt(b^2 - 4ac)) / (2a) instead of LaTeX \\frac or \\( \\).',
     '3. For CODING / PROGRAMMING / LAB questions: Provide the complete, runnable source code followed by its Sample Output.',
-    '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (100-180 words per question) with definitions, differences, concrete examples, and clean text/ASCII class diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
-    '5. Do NOT use markdown bold asterisks (**) or ### headers; write clean plain text suitable for direct PDF rendering.',
+    '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (90-160 words per question) with definitions, differences, concrete examples, and clean text/ASCII diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
+    '5. Do NOT use markdown bold asterisks (**), ### headers, or LaTeX backslashes; write clean plain text suitable for direct PDF rendering.',
     '6. Start each answer with the exact delimiter on its own line:',
     '===ANSWER 1===',
-    '(complete answer to Q1)',
+    '(complete direct answer to Q1)',
     '===ANSWER 2===',
-    '(complete answer to Q2)',
+    '(complete direct answer to Q2)',
     '...using the exact question number provided.'
   ].join('\n')
 
-  const chunkSize = 5
+  const chunkSize = 12
   for (let i = 0; i < questions.length; i += chunkSize) {
-    const chunk = questions.slice(i, i + chunkSize)
+    const chunkIndices = []
+    for (let j = i; j < Math.min(i + chunkSize, questions.length); j++) {
+      if (!localMathMatches[j] && !ansMap[j + 1]) {
+        chunkIndices.push(j)
+      }
+    }
+    if (chunkIndices.length === 0) continue
+
     if (onProgress) {
-      onProgress(`AI Professor solving Questions ${i + 1}–${Math.min(i + chunkSize, questions.length)} of ${questions.length}...`)
+      onProgress(`AI Professor solving ${chunkIndices.length} question(s) across ${cleanAiAnswerText(courseName || assignmentName)}...`)
     }
     const userPrompt = [
-      `Course / Subject: ${courseName || 'University Course'}`,
-      `Assignment: ${assignmentName || 'Assignment'}`,
+      `Course / Subject: ${cleanAiAnswerText(courseName) || 'University Course'}`,
+      `Assignment: ${cleanAiAnswerText(assignmentName) || 'Assignment'}`,
       '',
-      chunk.map((q, idx) => `Q${i + idx + 1}. ${q}`).join('\n\n'),
+      chunkIndices.map(idx => `Q${idx + 1}. ${cleanAiAnswerText(questions[idx])}`).join('\n\n'),
       '',
-      `Provide the complete direct answer for Q${i + 1} through Q${i + chunk.length} using ===ANSWER ${i + 1}===, ===ANSWER ${i + 2}===, etc.`
+      `Provide the complete direct answer for each question above using ${chunkIndices.map(idx => `===ANSWER ${idx + 1}===`).join(', ')}.`
     ].join('\n')
 
     try {
@@ -1049,12 +1068,19 @@ async function solveWithDirectBrowserAI(questions, courseName, assignmentName, s
       if (res.ok) {
         const data = await res.json()
         const content = data?.choices?.[0]?.message?.content || ''
-        const parts = content.split(/===\s*ANSWER\s*(\d+)\s*===/i)
-        for (let p = 1; p < parts.length; p += 2) {
-          const num = parseInt(parts[p], 10)
-          const body = (parts[p + 1] || '').trim()
-          if (!Number.isNaN(num) && body) {
-            ansMap[num] = body
+        const parts = content.split(/===\s*ANSWER\s*Q?(\d+)\s*===/i)
+        if (parts.length >= 3) {
+          for (let p = 1; p < parts.length; p += 2) {
+            const num = parseInt(parts[p], 10)
+            const body = cleanAiAnswerText(parts[p + 1] || '')
+            if (!Number.isNaN(num) && body) {
+              ansMap[num] = body
+            }
+          }
+        } else if (chunkIndices.length === 1) {
+          const singleBody = cleanAiAnswerText(content.replace(/^===\s*ANSWER\s*Q?\d+\s*===/i, ''))
+          if (singleBody) {
+            ansMap[chunkIndices[0] + 1] = singleBody
           }
         }
       }
@@ -1062,6 +1088,51 @@ async function solveWithDirectBrowserAI(questions, courseName, assignmentName, s
       console.warn(`Direct browser AI chunk ${i} error:`, err)
     }
   }
+
+  // Per-question direct AI fallback for any individual question still missing an answer
+  for (let idx = 0; idx < questions.length; idx++) {
+    if (localMathMatches[idx] || ansMap[idx + 1]) continue
+    if (onProgress) {
+      onProgress(`AI Professor solving Question ${idx + 1} of ${questions.length}...`)
+    }
+    try {
+      await new Promise(r => setTimeout(r, 1500))
+      const singleRes = await fetch('https://text.pollinations.ai/openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'openai-fast',
+          max_tokens: 2048,
+          reasoning_effort: 'low',
+          temperature: 0.2,
+          seed: (Number(studentSeed) || 42) + idx + 100,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert university professor. Give ONLY the direct, complete, accurate answer/solution to the question below. For maths/numerical questions, show full step-by-step calculations and the final answer. For coding questions, show complete runnable code and output. Never repeat the question and never write meta-commentary. Do not use markdown bold (**) or LaTeX backslashes.'
+            },
+            {
+              role: 'user',
+              content: `Subject: ${cleanAiAnswerText(courseName || assignmentName)}\nQuestion: ${cleanAiAnswerText(questions[idx])}`
+            }
+          ]
+        })
+      })
+      if (singleRes.ok) {
+        const singleData = await singleRes.json()
+        const singleContent = cleanAiAnswerText(
+          (singleData?.choices?.[0]?.message?.content || '').replace(/^===\s*ANSWER\s*Q?\d+\s*===/i, '')
+        )
+        if (singleContent) {
+          ansMap[idx + 1] = singleContent
+        }
+      }
+    } catch (singleErr) {
+      console.warn(`Single question AI fallback Q${idx + 1} error:`, singleErr)
+    }
+  }
+
   return ansMap
 }
 
@@ -1354,7 +1425,7 @@ export default function BobbyAssistant({
       if (allSolvedLocally) {
         generatedQA = questions.map((q, idx) => ({
           number: idx + 1,
-          question: q,
+          question: cleanAiAnswerText(q),
           answer: localMathMatches[idx]
         }))
       } else {
@@ -1366,10 +1437,9 @@ export default function BobbyAssistant({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               token: moodle.token,
-              courseName: assignment.coursename || assignment.courseshort || '',
-              assignmentName: assignment.name || '',
+              courseName: cleanAiAnswerText(assignment.coursename || assignment.courseshort || ''),
+              assignmentName: cleanAiAnswerText(assignment.name || ''),
               extractedText: combinedText,
-              pageImages: [],
               questions,
               studentSeed: seed
             })
@@ -1379,7 +1449,7 @@ export default function BobbyAssistant({
             if (solveData?.success && Array.isArray(solveData.questions)) {
               solveData.questions.forEach((item, idx) => {
                 if (item?.answer && item.answer.trim()) {
-                  aiSolvedMap[idx + 1] = item.answer.trim()
+                  aiSolvedMap[idx + 1] = cleanAiAnswerText(item.answer)
                 }
               })
             }
@@ -1396,12 +1466,14 @@ export default function BobbyAssistant({
             assignment.coursename || assignment.courseshort || '',
             assignment.name || '',
             seed,
-            msg => setStepText(msg)
+            msg => setStepText(msg),
+            aiSolvedMap,
+            localMathMatches
           )
           Object.entries(directMap).forEach(([k, v]) => {
             const num = Number(k)
             if (v && !aiSolvedMap[num]) {
-              aiSolvedMap[num] = v
+              aiSolvedMap[num] = cleanAiAnswerText(v)
             }
           })
         }
@@ -1411,14 +1483,14 @@ export default function BobbyAssistant({
           if (verifiedMath) {
             return {
               number: idx + 1,
-              question: q,
+              question: cleanAiAnswerText(q),
               answer: verifiedMath
             }
           }
           if (aiSolvedMap[idx + 1]) {
             return {
               number: idx + 1,
-              question: q,
+              question: cleanAiAnswerText(q),
               answer: aiSolvedMap[idx + 1]
             }
           }

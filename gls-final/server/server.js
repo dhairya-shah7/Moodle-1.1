@@ -736,55 +736,78 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
       courseName = '',
       assignmentName = '',
       extractedText = '',
-      pageImages = [],
       questions = [],
       studentSeed = 0
     } = req.body || {}
 
+    const cleanAiText = (str = '') => {
+      return String(str)
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#0?39;/gi, "'")
+        .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
+        .replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)')
+        .replace(/\\pm\b/g, '+-')
+        .replace(/\\times\b/g, 'x')
+        .replace(/\\cdot\b/g, '*')
+        .replace(/\\(?:le|leq)\b/g, '<=')
+        .replace(/\\(?:ge|geq)\b/g, '>=')
+        .replace(/\\neq\b/g, '!=')
+        .replace(/\\approx\b/g, '~=')
+        .replace(/\\\(|\\\)|\\\[|\\\]/g, '')
+        .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
+        .replace(/```/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/^#{1,4}\s+/gm, '')
+        .trim()
+    }
+
     const systemPrompt = [
-      'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
+      'You are Bobby, an expert university professor and universal academic solver across ALL subjects (Mathematics, Statistics, Computer Science, Programming, UML/SOOAD, Operating Systems, DBMS, Networks, Engineering, Physics, Management, Commerce, Humanities, Law, Sciences, etc.).',
       'CRITICAL INSTRUCTIONS:',
-      '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER write meta-commentary like "How to solve", "Conceptual Overview", or "Key Takeaways".',
-      '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer.',
+      '1. Give ONLY the direct, complete, accurate academic answer/solution for each question. NEVER repeat the question as a statement and NEVER write meta-commentary like "How to solve", "is a core concept in...", "Conceptual Overview", or "Key Takeaways".',
+      '2. For MATHEMATICS / STATISTICS / NUMERICAL questions: Provide the complete step-by-step mathematical calculation, formulas, intermediate substitutions/tables, and the exact Final Answer. Write clean plain-text math like x = (-b +- sqrt(b^2 - 4ac)) / (2a) instead of LaTeX \\frac or \\( \\).',
       '3. For CODING / PROGRAMMING / LAB questions: Provide the complete, runnable source code followed by its Sample Output.',
-      '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (100-180 words per question) with definitions, differences, concrete examples, and clean text/ASCII class diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
-      '5. Do NOT use markdown bold asterisks (**) or ### headers; write clean plain text suitable for direct PDF rendering.',
+      '4. For UML / DESIGN / THEORY questions: Write a clear, thorough, well-structured answer (90-160 words per question) with definitions, differences, concrete examples, and clean text/ASCII diagrams (showing classes, attributes, methods, multiplicities, and relationships) when a diagram is requested.',
+      '5. Do NOT use markdown bold asterisks (**), ### headers, or LaTeX backslashes; write clean plain text suitable for direct PDF rendering.',
       '6. Start each answer with the exact delimiter on its own line:',
       '===ANSWER 1===',
-      '(complete answer to Q1)',
+      '(complete direct answer to Q1)',
       '===ANSWER 2===',
-      '(complete answer to Q2)',
+      '(complete direct answer to Q2)',
       '...using the exact question number provided.'
     ].join('\n')
 
     const validQuestions = Array.isArray(questions) && questions.length > 0
-      ? questions.map(q => String(q || '').trim()).filter(Boolean)
-      : [String(extractedText || assignmentName || 'Solve the assignment').trim()]
+      ? questions.map(q => cleanAiText(q)).filter(Boolean)
+      : [cleanAiText(extractedText || assignmentName || 'Solve the assignment')]
 
-    const parseDelimitedAnswers = (rawText) => {
+    const parseDelimitedAnswers = (rawText, startIndex, count) => {
       const ansMap = {}
       if (!rawText || typeof rawText !== 'string') return ansMap
-      const parts = rawText.split(/===\s*ANSWER\s*(\d+)\s*===/i)
-      for (let i = 1; i < parts.length; i += 2) {
-        const num = parseInt(parts[i], 10)
-        const body = (parts[i + 1] || '').trim()
-        if (!Number.isNaN(num) && body) {
-          ansMap[num] = body
+      const parts = rawText.split(/===\s*ANSWER\s*Q?(\d+)\s*===/i)
+      if (parts.length >= 3) {
+        for (let i = 1; i < parts.length; i += 2) {
+          const num = parseInt(parts[i], 10)
+          const body = cleanAiText(parts[i + 1] || '')
+          if (!Number.isNaN(num) && body) {
+            ansMap[num] = body
+          }
+        }
+        return ansMap
+      }
+      if (count === 1) {
+        const singleClean = cleanAiText(rawText.replace(/^===\s*ANSWER\s*\d+\s*===/i, ''))
+        if (singleClean) {
+          ansMap[startIndex + 1] = singleClean
         }
       }
       return ansMap
     }
 
-    const solveChunk = async (chunkQuestions, startIndex) => {
-      const userPrompt = [
-        `Course / Subject: ${courseName || 'University Course'}`,
-        `Assignment: ${assignmentName || 'Assignment'}`,
-        '',
-        chunkQuestions.map((q, idx) => `Q${startIndex + idx + 1}. ${q}`).join('\n\n'),
-        '',
-        `Provide the complete direct answer for Q${startIndex + 1} through Q${startIndex + chunkQuestions.length} using ===ANSWER ${startIndex + 1}===, ===ANSWER ${startIndex + 2}===, etc.`
-      ].join('\n')
-
+    const callAiMessages = async (messages, seedVal) => {
       const apiUrl = process.env.OPENAI_API_KEY
         ? 'https://api.openai.com/v1/chat/completions'
         : 'https://text.pollinations.ai/openai'
@@ -802,26 +825,45 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
           max_tokens: 8192,
           reasoning_effort: 'low',
           temperature: 0.2,
-          seed: (Number(studentSeed) || 42) + startIndex,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ]
+          seed: seedVal,
+          messages
         }),
-        timeout: 45000
+        timeout: 50000
       })
 
       if (!aiRes.ok) {
         throw new Error(`AI endpoint status ${aiRes.status}`)
       }
       const aiData = await aiRes.json()
-      const content = aiData?.choices?.[0]?.message?.content || ''
-      return parseDelimitedAnswers(content)
+      return aiData?.choices?.[0]?.message?.content || ''
+    }
+
+    const solveChunk = async (chunkQuestions, startIndex) => {
+      const userPrompt = [
+        `Course / Subject: ${cleanAiText(courseName) || 'University Course'}`,
+        `Assignment: ${cleanAiText(assignmentName) || 'Assignment'}`,
+        '',
+        chunkQuestions.map((q, idx) => `Q${startIndex + idx + 1}. ${q}`).join('\n\n'),
+        '',
+        `Provide the complete direct answer for Q${startIndex + 1} through Q${startIndex + chunkQuestions.length} using ===ANSWER ${startIndex + 1}===, ===ANSWER ${startIndex + 2}===, etc.`
+      ].join('\n')
+
+      const content = await callAiMessages(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        (Number(studentSeed) || 42) + startIndex
+      )
+      return parseDelimitedAnswers(content, startIndex, chunkQuestions.length)
     }
 
     const combinedAnswerMap = {}
-    const chunkSize = 6
+    const chunkSize = 12
     for (let i = 0; i < validQuestions.length; i += chunkSize) {
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 2000))
+      }
       const chunk = validQuestions.slice(i, i + chunkSize)
       try {
         const chunkMap = await solveChunk(chunk, i)
