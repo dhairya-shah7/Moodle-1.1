@@ -258,13 +258,13 @@ export default function Assignments() {
                         color: isSubmitted ? 'var(--success)' : (s.tagCls === 'tag-overdue' ? 'var(--danger)' : s.tagCls === 'tag-soon' ? 'var(--warning)' : 'var(--text2)'),
                         marginBottom: 2
                       }}>{isSubmitted ? 'DONE' : s.tag}</div>
-                      <div className="due-label" style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
-                        <Calendar size={10} /> {fmt(a.duedate)}
+                      <div className="due-label" style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, whiteSpace: 'nowrap' }}>
+                        <Calendar size={11} style={{ flexShrink: 0 }} /> <span>{fmt(a.duedate)}</span>
                       </div>
                     </div>
                   </div>
                   
-                  <ChevronRight size={16} style={{ color: 'var(--text3)', opacity: 0.5, flexShrink: 0 }} />
+                  <ChevronRight size={16} className="assign-chevron" style={{ color: 'var(--text3)', opacity: 0.5, flexShrink: 0 }} />
                 </div>
               )
             })}

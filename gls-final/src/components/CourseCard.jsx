@@ -97,8 +97,8 @@ export default function CourseCard({ course }) {
         )}
       </div>
 
-      <div className="course-name" style={{ paddingRight: 40 }}>{course.fullname}</div>
-      <div className="course-cat" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div className="course-name" style={{ paddingRight: isFaculty ? 130 : 68 }}>{course.fullname}</div>
+      <div className="course-cat" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <span className="badge badge-blue">{truncate(course.shortname || 'Course', 20)}</span>
         <span style={{ color: 'var(--text3)', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <FolderOpen size={12} /> Files

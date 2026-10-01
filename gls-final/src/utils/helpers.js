@@ -1,4 +1,4 @@
-export const fmt = ts => {
+export const fmt = (ts, detailed = false) => {
   if (!ts) return 'No deadline'
   const d = new Date(ts * 1000)
   const hours = d.getHours()
@@ -7,12 +7,15 @@ export const fmt = ts => {
   const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
   const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 
-  // If 12:00 AM (00:00 midnight), clarify that 12:00 AM on Aug 10 means Midnight tonight (end of Aug 9)
+  // If 12:00 AM (00:00 midnight), clarify in detailed view that 12:00 AM means night of previous day
   if (hours === 0 && mins === 0) {
-    const prevDay = new Date(d)
-    prevDay.setDate(prevDay.getDate() - 1)
-    const prevStr = prevDay.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-    return `${dateStr}, 12:00 am (Midnight - Night of ${prevStr})`
+    if (detailed) {
+      const prevDay = new Date(d)
+      prevDay.setDate(prevDay.getDate() - 1)
+      const prevStr = prevDay.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+      return `${dateStr}, 12:00 am (Night of ${prevStr})`
+    }
+    return `${dateStr}, 12:00 am`
   }
 
   return `${dateStr}, ${timeStr}`

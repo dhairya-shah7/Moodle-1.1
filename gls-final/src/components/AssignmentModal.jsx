@@ -484,12 +484,12 @@ export default function AssignmentModal({ assignment, onClose }) {
               </div>, 
               gradingStatus === 'graded' ? 'var(--success)' : 'var(--text2)'
             ],
-            ['Due Date', assignment.duedate ? fmt(assignment.duedate) : 'No deadline', 'var(--text)'],
+            ['Due Date', assignment.duedate ? fmt(assignment.duedate, true) : 'No deadline', 'var(--text)'],
             ['Time Remaining', timeRemaining, timeColor],
           ].map(([label, value, color]) => (
-            <div key={label} style={{ display: 'flex', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ width: 160, fontSize: 13, fontWeight: 600, color: 'var(--text2)', flexShrink: 0 }}>{label}</div>
-              <div style={{ fontSize: 13, color, flex: 1 }}>{value}</div>
+            <div key={label} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ width: 140, fontSize: 13, fontWeight: 600, color: 'var(--text2)', flexShrink: 0 }}>{label}</div>
+              <div style={{ fontSize: 13, color, flex: '1 1 160px', minWidth: 0, wordBreak: 'break-word' }}>{value}</div>
             </div>
           ))}
         </div>
