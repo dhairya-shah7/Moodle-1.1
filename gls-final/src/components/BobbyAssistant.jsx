@@ -291,189 +291,204 @@ async function solveWithFactualEncyclopedia(questions, courseName, assignmentNam
   return ansMap
 }
 
-// Compile personalized PDF using jsPDF with per-student visual theme, Name & Roll Number
+// Normalize answer text so coding answers use clean "Program:" and "Output:" labels without AI-looking boilerplate
+function normalizePlainAnswer(raw = '') {
+  const cleaned = cleanAiAnswerText(raw)
+  const lines = cleaned.split('\n')
+  const hasCode =
+    /(?:Complete\s+)?Python\s+Implementation|^Program\s*:|^import\s+\w+|def\s+\w+\s*\(|print\s*\(|input\s*\(|cv2\.|#include\s*</im.test(
+      cleaned
+    )
+
+  if (!hasCode) {
+    return cleaned
+      .replace(/^(?:\d+\.\s*)?(?:Overview\s*&\s*Definition|Key\s*Principles|Technical\s*Summary)\s*:\s*/gim, '')
+      .trim()
+  }
+
+  const out = []
+  let skipAnalysisParagraph = false
+  let addedProgramHeader = false
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const t = line.trim()
+
+    if (/^(?:1\.\s*)?Problem\s+Analysis\s*&\s*Approach\s*:?$/i.test(t)) {
+      skipAnalysisParagraph = true
+      continue
+    }
+    if (skipAnalysisParagraph) {
+      if (
+        !t ||
+        /^(?:2\.\s*)?(?:Complete\s+)?Python\s+Implementation\s*:?$/i.test(t) ||
+        /^Program\s*:?$/i.test(t)
+      ) {
+        skipAnalysisParagraph = false
+      } else {
+        continue
+      }
+    }
+
+    if (/^(?:\d+\.\s*)?(?:Complete\s+)?Python\s+Implementation\s*:?$/i.test(t) || /^Program\s*:?$/i.test(t)) {
+      if (!addedProgramHeader) {
+        out.push('Program:')
+        addedProgramHeader = true
+      }
+      continue
+    }
+
+    if (/^(?:\d+\.\s*)?Sample\s+Output(?:\s*\([^)]*\))?\s*:?$/i.test(t) || /^Output\s*:?$/i.test(t)) {
+      out.push('Output:')
+      continue
+    }
+
+    // Strip top-level "# Program to ..." AI comment line if it's the very first line of code
+    if (out.length <= 1 && /^#\s*Program\s+to\b/i.test(t)) {
+      if (!addedProgramHeader) {
+        out.unshift('Program:')
+        addedProgramHeader = true
+      }
+      continue
+    }
+
+    out.push(line)
+  }
+
+  if (!addedProgramHeader && out.length > 0 && !/^Program\s*:/i.test(out[0].trim())) {
+    out.unshift('Program:')
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// Compile plain-text Word-style PDF with bold student details, bold questions, and normal black answers (no timestamps, boxes, or footers)
 async function compileCompletedPdf({
   getJsPDF,
   assignment,
   studentName,
+  enrollmentNo,
+  semester,
+  division,
   rollNumber,
+  subjectName,
   qaList,
-  sourceFilename,
   studentSeed,
   customFilename
 }) {
   const jsPDF = await getJsPDF()
   if (!jsPDF) throw new Error('PDF compiler (jsPDF) could not be loaded.')
 
-  const theme = PDF_THEMES[studentSeed % PDF_THEMES.length]
-  const fontName = theme.font
-  const [ar, ag, ab] = theme.accent
-  const [hbr, hbg, hbb] = theme.headerBg
-  const [qbr, qbg, qbb] = theme.qBg
-
+  const fontName = 'helvetica'
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
-  const margin = 16
+  const margin = 25.4 // Standard 1-inch Word margin
   const contentWidth = pageWidth - margin * 2
-  let y = 18
+  let y = 26
 
   const ensureSpace = (neededMm) => {
-    if (y + neededMm > pageHeight - 18) {
+    if (y + neededMm > pageHeight - 24) {
       doc.addPage()
-      doc.setFont(fontName, 'italic')
-      doc.setFontSize(8.5)
-      doc.setTextColor(110, 110, 120)
-      doc.text(sanitizeForPdfFont(`${assignment.name}  |  ${studentName} (${rollNumber})`), margin, 11)
-      doc.setDrawColor(210, 210, 220)
-      doc.setLineWidth(0.2)
-      doc.line(margin, 13, pageWidth - margin, 13)
-      y = 20
+      y = 26
     }
   }
 
-  const dateStr = new Date().toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  })
+  // Page 1 Top: Bold Student Details Block (matching reference photo format, no timestamps)
+  doc.setFont(fontName, 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(0, 0, 0)
 
-  if (theme.headerStyle === 'double-line') {
-    doc.setFont(fontName, 'bold')
-    doc.setFontSize(14)
-    doc.setTextColor(ar, ag, ab)
-    doc.text(sanitizeForPdfFont((assignment.coursename || 'ACADEMIC SUBMISSION').toUpperCase()), pageWidth / 2, y + 6, { align: 'center' })
+  const headerLines = [
+    studentName ? `NAME: ${studentName}` : '',
+    enrollmentNo ? `ENROLLMENT NO: ${enrollmentNo}` : '',
+    semester ? `SEM: ${semester}` : '',
+    division ? `DIV: ${division}` : '',
+    rollNumber ? `ROLL NO: ${rollNumber}` : '',
+    subjectName ? `SUBJECT: ${subjectName}` : ''
+  ].filter(Boolean)
 
-    doc.setFontSize(11.5)
-    doc.setTextColor(30, 30, 40)
-    doc.text(sanitizeForPdfFont(assignment.name), pageWidth / 2, y + 13, { align: 'center' })
-
-    doc.setDrawColor(ar, ag, ab)
-    doc.setLineWidth(0.6)
-    doc.line(margin, y + 16, pageWidth - margin, y + 16)
-    doc.setLineWidth(0.2)
-    doc.line(margin, y + 17.5, pageWidth - margin, y + 17.5)
-
-    doc.setFont(fontName, 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(40, 40, 50)
-    doc.text(sanitizeForPdfFont(`Submitted By: ${studentName}`), margin, y + 24)
-    doc.text(sanitizeForPdfFont(`Roll No / ID: ${rollNumber}`), margin, y + 30)
-    doc.text(sanitizeForPdfFont(`Date: ${dateStr}`), pageWidth - margin, y + 24, { align: 'right' })
-    doc.text(sanitizeForPdfFont(`Course Code: ${assignment.courseshort || 'B.Tech'}`), pageWidth - margin, y + 30, { align: 'right' })
-    doc.line(margin, y + 34, pageWidth - margin, y + 34)
-    y += 42
-  } else if (theme.headerStyle === 'left-bar') {
-    doc.setFillColor(hbr, hbg, hbb)
-    doc.rect(margin, y, contentWidth, 34, 'F')
-    doc.setFillColor(ar, ag, ab)
-    doc.rect(margin, y, 3.5, 34, 'F')
-
-    doc.setFont(fontName, 'bold')
-    doc.setFontSize(12.5)
-    doc.setTextColor(ar, ag, ab)
-    doc.text(sanitizeForPdfFont(assignment.name), margin + 8, y + 8)
-
-    doc.setFont(fontName, 'normal')
-    doc.setFontSize(9.5)
-    doc.setTextColor(45, 45, 55)
-    doc.text(sanitizeForPdfFont(`Name: ${studentName}   |   Roll Number: ${rollNumber}`), margin + 8, y + 16)
-    doc.text(sanitizeForPdfFont(`Subject: ${(assignment.coursename || assignment.courseshort || '').slice(0, 55)}`), margin + 8, y + 23)
-    doc.text(sanitizeForPdfFont(`Date: ${dateStr}`), margin + 8, y + 30)
-    y += 42
-  } else {
-    doc.setFillColor(hbr, hbg, hbb)
-    doc.setDrawColor(ar, ag, ab)
-    doc.setLineWidth(0.4)
-    doc.roundedRect(margin, y, contentWidth, 36, 2.5, 2.5, 'FD')
-
-    doc.setFont(fontName, 'bold')
-    doc.setFontSize(12.5)
-    doc.setTextColor(ar, ag, ab)
-    doc.text(sanitizeForPdfFont(`${assignment.courseshort || 'COURSE'} - ${assignment.name}`), margin + 5, y + 8)
-
-    doc.setFont(fontName, 'normal')
-    doc.setFontSize(9.5)
-    doc.setTextColor(40, 40, 50)
-    doc.text(sanitizeForPdfFont(`Student Name : ${studentName}`), margin + 5, y + 16)
-    doc.text(sanitizeForPdfFont(`Roll Number  : ${rollNumber}`), margin + 5, y + 23)
-    doc.text(sanitizeForPdfFont(`Course       : ${(assignment.coursename || assignment.courseshort || '').slice(0, 52)}`), margin + 5, y + 30)
-    doc.text(sanitizeForPdfFont(`Date: ${dateStr}`), pageWidth - margin - 38, y + 16)
-    if (sourceFilename) {
-      doc.setFontSize(8)
-      doc.setTextColor(100, 100, 115)
-      doc.text(sanitizeForPdfFont(`File: ${sourceFilename.slice(0, 26)}`), pageWidth - margin - 48, y + 23)
+  for (const hRow of headerLines) {
+    const wrappedHeader = doc.splitTextToSize(sanitizeForPdfFont(hRow), contentWidth)
+    for (const hl of wrappedHeader) {
+      ensureSpace(6)
+      doc.text(hl, margin, y)
+      y += 5.2
     }
-    y += 44
+    y += 4.3 // Blank line spacing between student detail rows
   }
 
-  // Render each Question & Answer cleanly
+  y += 4
+
+  // Render each Question (Bold) & Answer (Normal) in plain black text
   qaList.forEach((item, idx) => {
-    ensureSpace(24)
+    ensureSpace(16)
 
     const qNum = idx + 1
-    const qPrefix = sanitizeForPdfFont(theme.qPrefix(qNum))
+    const rawQ = sanitizeForPdfFont(item.question || '').replace(/^(?:Q(?:uestion)?\s*\d+\s*[:.)\-–—]\s*|\d+\s*[:.)\-]\s*)/i, '').trim()
+    const qFull = `${qNum}.  ${rawQ}`
+
     doc.setFont(fontName, 'bold')
-    doc.setFontSize(10)
-    const cleanQ = sanitizeForPdfFont(item.question || '')
-    const qLines = doc.splitTextToSize(qPrefix + cleanQ, contentWidth - 8)
-    const qBoxHeight = Math.max(8, qLines.length * 4.8 + 3.5)
+    doc.setFontSize(11)
+    doc.setTextColor(0, 0, 0)
 
-    ensureSpace(qBoxHeight + 12)
-    doc.setFillColor(qbr, qbg, qbb)
-    doc.roundedRect(margin, y, contentWidth, qBoxHeight, 1.5, 1.5, 'F')
-    doc.setTextColor(ar, ag, ab)
-    doc.text(qLines, margin + 4, y + 5)
-    y += qBoxHeight + 4
-
-    doc.setFont(fontName, 'normal')
-    doc.setFontSize(9.5)
-    doc.setTextColor(35, 35, 45)
-
-    const paragraphs = sanitizeForPdfFont(item.answer || '').split('\n')
-    for (const para of paragraphs) {
-      if (!para.trim()) {
-        y += 2
+    const qParagraphs = qFull.split('\n')
+    for (const qPara of qParagraphs) {
+      if (!qPara.trim()) {
+        y += 3
         continue
       }
-      const isBoldLine = /^(?:Step\s*\d+|Part\s*\([a-z0-9]+\)|Final Answer|Sample Output|Performance Comparison|1\.|2\.|3\.)/i.test(para.trim())
-      if (isBoldLine) {
-        doc.setFont(fontName, 'bold')
-        doc.setTextColor(ar, ag, ab)
-      } else {
-        doc.setFont(fontName, 'normal')
-        doc.setTextColor(35, 35, 45)
-      }
-
-      const wrapped = doc.splitTextToSize(para, contentWidth - 4)
-      for (const wLine of wrapped) {
-        ensureSpace(5.5)
-        doc.text(wLine, margin + 2, y)
-        y += 4.6
+      const wrappedQ = doc.splitTextToSize(qPara, contentWidth)
+      for (const qLine of wrappedQ) {
+        ensureSpace(6)
+        doc.text(qLine, margin, y)
+        y += 5.4
       }
     }
 
     y += 3.5
-    doc.setDrawColor(225, 225, 235)
-    doc.setLineWidth(0.2)
-    doc.line(margin, y, pageWidth - margin, y)
-    y += 5
-  })
 
-  // Page numbering footer
-  const totalPages = doc.internal.getNumberOfPages()
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p)
-    doc.setFont(fontName, 'normal')
-    doc.setFontSize(8.5)
-    doc.setTextColor(120, 120, 130)
-    doc.text(
-      sanitizeForPdfFont(`${studentName} (${rollNumber})  |  Page ${p} of ${totalPages}`),
-      pageWidth / 2,
-      pageHeight - 8,
-      { align: 'center' }
-    )
-  }
+    const normalizedAns = normalizePlainAnswer(item.answer || '')
+    const paragraphs = sanitizeForPdfFont(normalizedAns).split('\n')
+
+    for (const para of paragraphs) {
+      if (!para.trim()) {
+        y += 3.5
+        continue
+      }
+
+      const trimmed = para.trim()
+      const isSectionLabel = /^(?:Program|Output|OUTPUT)\s*:$/i.test(trimmed)
+
+      if (isSectionLabel) {
+        y += 1.5
+        ensureSpace(7)
+        doc.setFont(fontName, 'bold')
+        doc.setFontSize(11)
+        doc.setTextColor(0, 0, 0)
+        doc.text(trimmed, margin, y)
+        y += 6.5
+        continue
+      }
+
+      doc.setFont(fontName, 'normal')
+      doc.setFontSize(11)
+      doc.setTextColor(0, 0, 0)
+
+      const leadingSpaces = (para.match(/^ +/)?.[0]?.length || 0)
+      const indentMm = Math.min(leadingSpaces, 24) * 1.8
+      const availWidth = Math.max(40, contentWidth - indentMm)
+      const wrapped = doc.splitTextToSize(trimmed, availWidth)
+
+      for (const wLine of wrapped) {
+        ensureSpace(6)
+        doc.text(wLine, margin + indentMm, y)
+        y += 5.4
+      }
+    }
+
+    y += 6
+  })
 
   let outFilename = ''
   if (customFilename && customFilename.trim()) {
@@ -497,6 +512,21 @@ async function compileCompletedPdf({
   return new File([pdfBlob], outFilename, { type: 'application/pdf' })
 }
 
+function getSavedDetail(key, fallback = '') {
+  try {
+    const val = localStorage.getItem(key)
+    return val !== null ? val : fallback
+  } catch (_) {
+    return fallback
+  }
+}
+
+function setSavedDetail(key, val) {
+  try {
+    localStorage.setItem(key, val)
+  } catch (_) {}
+}
+
 export default function BobbyAssistant({
   assignment,
   attachmentFile,
@@ -508,11 +538,36 @@ export default function BobbyAssistant({
   onConfirmSubmit,
   onClose
 }) {
-  const defaultName = user?.fullname || `${user?.firstname || ''} ${user?.lastname || ''}`.trim() || 'Student'
-  const defaultRoll = user?.username || 'RollNo'
+  const rawUserRoll = (user?.username || 'A24CSE057').trim().toUpperCase()
+  const rawFullName = (user?.fullname || `${user?.firstname || ''} ${user?.lastname || ''}`).trim()
+  // Strip leading roll number from Moodle fullname if present (e.g. "a24cse057 Dhairya Shah" -> "Dhairya Shah")
+  const cleanedDefaultName =
+    rawFullName.replace(new RegExp(`^${rawUserRoll}\\s+`, 'i'), '').trim() ||
+    user?.lastname ||
+    rawFullName ||
+    'Student'
 
-  const [studentName, setStudentName] = useState(defaultName)
-  const [rollNumber, setRollNumber] = useState(defaultRoll)
+  const coursePlusAssign = `${assignment?.coursename || ''} ${assignment?.name || ''}`
+  const semMatch = coursePlusAssign.match(/\bSem(?:ester)?\s*[-:]?\s*(\d+)\b/i)
+  const divMatch =
+    coursePlusAssign.match(/\bDiv(?:ision)?\s*[-:]?\s*([A-Z])\b/i) ||
+    rawUserRoll.match(/^([A-Z])\d{2}/i)
+
+  const defaultEnrollment =
+    user?.idnumber ||
+    (rawUserRoll === 'A24CSE057' ? '202402626010056' : '')
+  const defaultSem = semMatch ? semMatch[1] : '5'
+  const defaultDiv = divMatch ? divMatch[1].toUpperCase() : 'A'
+  const defaultSubject = cleanAiAnswerText(assignment?.coursename || assignment?.name || 'SUBJECT').toUpperCase()
+
+  const storagePrefix = `bobby_student_${rawUserRoll.toLowerCase()}_`
+
+  const [studentName, setStudentName] = useState(() => getSavedDetail(`${storagePrefix}name`, cleanedDefaultName))
+  const [enrollmentNo, setEnrollmentNo] = useState(() => getSavedDetail(`${storagePrefix}enrollment`, defaultEnrollment))
+  const [semester, setSemester] = useState(() => getSavedDetail(`${storagePrefix}sem`, defaultSem))
+  const [division, setDivision] = useState(() => getSavedDetail(`${storagePrefix}div`, defaultDiv))
+  const [rollNumber, setRollNumber] = useState(() => getSavedDetail(`${storagePrefix}roll`, rawUserRoll))
+  const [subjectName, setSubjectName] = useState(defaultSubject)
   const [customFilename, setCustomFilename] = useState('')
   const [variationCount, setVariationCount] = useState(0)
   const [status, setStatus] = useState('idle') // idle | processing | ready | submitting | error
@@ -524,6 +579,14 @@ export default function BobbyAssistant({
   const [isEditing, setIsEditing] = useState(false)
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
 
+  const saveStudentFieldsToStorage = (next = {}) => {
+    if (next.studentName !== undefined) setSavedDetail(`${storagePrefix}name`, next.studentName)
+    if (next.enrollmentNo !== undefined) setSavedDetail(`${storagePrefix}enrollment`, next.enrollmentNo)
+    if (next.semester !== undefined) setSavedDetail(`${storagePrefix}sem`, next.semester)
+    if (next.division !== undefined) setSavedDetail(`${storagePrefix}div`, next.division)
+    if (next.rollNumber !== undefined) setSavedDetail(`${storagePrefix}roll`, next.rollNumber)
+  }
+
   const getCurrentSeed = (nameVal = studentName, rollVal = rollNumber, varIdx = variationCount) => {
     return computeStudentSeed(`${rollVal.trim().toLowerCase()}|${nameVal.trim().toLowerCase()}|${assignment?.id || 0}|${varIdx}`)
   }
@@ -533,14 +596,12 @@ export default function BobbyAssistant({
     setErrorMsg('')
     try {
       let extractedText = ''
-      let sourceName = ''
 
       if (attachmentFile) {
         const ext = (attachmentFile.filename || '').split('.').pop().toLowerCase()
         if (ext !== 'pdf' && ext !== 'docx') {
           throw new Error(`Bobby only supports .pdf or .docx assignment files (found .${ext}).`)
         }
-        sourceName = attachmentFile.filename
         setStepText(`Fetching "${attachmentFile.filename}" from Moodle...`)
         const downloadUrl =
           attachmentFile.fileurl +
@@ -563,13 +624,12 @@ export default function BobbyAssistant({
       const introPlain = stripHtml(assignment.intro || '')
       const combinedText = [extractedText, introPlain].filter(Boolean).join('\n\n')
 
-      setStepText('Parsing questions & solving with Deterministic Academic Engine...')
+      setStepText('Parsing questions & solving assignment...')
       const questions = parseQuestions(combinedText, assignment.name, assignment.coursename)
       setRawQuestions(questions)
 
       const seed = getCurrentSeed(studentName, rollNumber, customVarIdx)
 
-      // 1. Run Deterministic Academic Solver (OpenCV/Image, Math, Stats, Coding/DSA, UML/SOOAD, DBMS, OS, Networks)
       const localMatches = questions.map((q, idx) =>
         solveMathOrStatsQuestion(
           q,
@@ -587,10 +647,10 @@ export default function BobbyAssistant({
         generatedQA = questions.map((q, idx) => ({
           number: idx + 1,
           question: cleanAiAnswerText(q),
-          answer: localMatches[idx]
+          answer: normalizePlainAnswer(localMatches[idx])
         }))
       } else {
-        setStepText(`Resolving remaining questions via Factual Knowledge Engine...`)
+        setStepText(`Resolving remaining questions...`)
         let factualMap = {}
         try {
           const solveRes = await fetch('/proxy/bobby/solve', {
@@ -616,7 +676,7 @@ export default function BobbyAssistant({
             }
           }
         } catch (srvErr) {
-          console.warn('Server factual resolver error, using browser Wikipedia resolver:', srvErr)
+          console.warn('Server factual resolver error, using browser resolver:', srvErr)
         }
 
         const missingCount = questions.filter((q, idx) => !localMatches[idx] && !factualMap[idx + 1]).length
@@ -642,31 +702,38 @@ export default function BobbyAssistant({
             return {
               number: idx + 1,
               question: cleanAiAnswerText(q),
-              answer: localMatches[idx]
+              answer: normalizePlainAnswer(localMatches[idx])
             }
           }
           if (factualMap[idx + 1]) {
             return {
               number: idx + 1,
               question: cleanAiAnswerText(q),
-              answer: factualMap[idx + 1]
+              answer: normalizePlainAnswer(factualMap[idx + 1])
             }
           }
-          return generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
+          const fallbackObj = generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
+          return {
+            ...fallbackObj,
+            answer: normalizePlainAnswer(fallbackObj.answer)
+          }
         })
       }
 
       setQaList(generatedQA)
       setHasUnsavedEdits(false)
 
-      setStepText('Compiling personalized PDF with your Name & Roll Number...')
+      setStepText('Building plain-text PDF with your Student Details...')
       const pdfFile = await compileCompletedPdf({
         getJsPDF,
         assignment,
-        studentName: studentName.trim() || defaultName,
-        rollNumber: rollNumber.trim() || defaultRoll,
+        studentName: studentName.trim(),
+        enrollmentNo: enrollmentNo.trim(),
+        semester: semester.trim(),
+        division: division.trim(),
+        rollNumber: rollNumber.trim(),
+        subjectName: subjectName.trim(),
         qaList: generatedQA,
-        sourceFilename: sourceName || 'Assignment Prompt',
         studentSeed: seed,
         customFilename
       })
@@ -694,10 +761,13 @@ export default function BobbyAssistant({
     const pdfFile = await compileCompletedPdf({
       getJsPDF,
       assignment,
-      studentName: studentName.trim() || defaultName,
-      rollNumber: rollNumber.trim() || defaultRoll,
+      studentName: studentName.trim(),
+      enrollmentNo: enrollmentNo.trim(),
+      semester: semester.trim(),
+      division: division.trim(),
+      rollNumber: rollNumber.trim(),
+      subjectName: subjectName.trim(),
       qaList: targetQa,
-      sourceFilename: attachmentFile?.filename || 'Assignment Prompt',
       studentSeed: seed,
       customFilename: targetFilename
     })
@@ -731,7 +801,7 @@ export default function BobbyAssistant({
     }
     try {
       setStatus('processing')
-      setStepText('Updating PDF layout & header...')
+      setStepText('Updating PDF student details...')
       const seed = getCurrentSeed(studentName, rollNumber, nextVarIdx)
       const nextQa = regenerateAnswers
         ? questionsToUse.map((q, idx) =>
@@ -746,10 +816,13 @@ export default function BobbyAssistant({
       const pdfFile = await compileCompletedPdf({
         getJsPDF,
         assignment,
-        studentName: studentName.trim() || defaultName,
-        rollNumber: rollNumber.trim() || defaultRoll,
+        studentName: studentName.trim(),
+        enrollmentNo: enrollmentNo.trim(),
+        semester: semester.trim(),
+        division: division.trim(),
+        rollNumber: rollNumber.trim(),
+        subjectName: subjectName.trim(),
         qaList: nextQa,
-        sourceFilename: attachmentFile?.filename || 'Assignment Prompt',
         studentSeed: seed,
         customFilename: regenerateAnswers ? '' : customFilename
       })
@@ -759,40 +832,11 @@ export default function BobbyAssistant({
       }
       setHasUnsavedEdits(false)
       setStatus('ready')
-      toast.success(regenerateAnswers ? 'Shuffled PDF visual theme & layout!' : 'Updated PDF header!')
+      toast.success('Updated PDF details!')
     } catch (err) {
       setErrorMsg(err.message)
       setStatus('error')
     }
-  }
-
-  const handleShuffleVariation = () => {
-    const nextVar = variationCount + 1
-    setVariationCount(nextVar)
-    const seed = getCurrentSeed(studentName, rollNumber, nextVar)
-    setStatus('processing')
-    setStepText('Switching PDF visual theme & layout...')
-    compileCompletedPdf({
-      getJsPDF,
-      assignment,
-      studentName: studentName.trim() || defaultName,
-      rollNumber: rollNumber.trim() || defaultRoll,
-      qaList,
-      sourceFilename: attachmentFile?.filename || 'Assignment Prompt',
-      studentSeed: seed,
-      customFilename: ''
-    })
-      .then(pdfFile => {
-        setGeneratedFile(pdfFile)
-        setCustomFilename(pdfFile.name)
-        setHasUnsavedEdits(false)
-        setStatus('ready')
-        toast.success('Switched to a fresh PDF theme & layout!')
-      })
-      .catch(err => {
-        setErrorMsg(err.message)
-        setStatus('error')
-      })
   }
 
   const handleQuestionChange = (idx, newQuestion) => {
@@ -867,7 +911,26 @@ export default function BobbyAssistant({
     }
   }
 
-  const activeTheme = PDF_THEMES[getCurrentSeed() % PDF_THEMES.length]
+  const fieldInputStyle = {
+    width: '100%',
+    padding: '7px 10px',
+    borderRadius: 7,
+    border: '1px solid var(--border)',
+    background: 'var(--surface2)',
+    color: 'var(--text)',
+    fontSize: 12.5,
+    boxSizing: 'border-box'
+  }
+
+  const fieldLabelStyle = {
+    display: 'block',
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: 'var(--text3)',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: '0.3px'
+  }
 
   return (
     <div
@@ -900,25 +963,12 @@ export default function BobbyAssistant({
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              Bobby — AI Assignment Assistant
-              <span
-                style={{
-                  fontSize: 10,
-                  padding: '2px 7px',
-                  borderRadius: 20,
-                  background: 'var(--accent-soft)',
-                  color: 'var(--accent)',
-                  border: '1px solid var(--accent-bd)',
-                  fontWeight: 700
-                }}
-              >
-                Theme: {activeTheme.name}
-              </span>
+              Bobby Assistant
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
               {attachmentFile
                 ? `Source File: ${attachmentFile.filename}`
-                : `Source: ${assignment.name} (Assignment Prompt)`}
+                : `Source: ${assignment.name}`}
             </div>
           </div>
         </div>
@@ -944,11 +994,11 @@ export default function BobbyAssistant({
         )}
       </div>
 
-      {/* Student Identity & Filename Fields */}
+      {/* Editable Student Details Block (Matches PDF Top Header Format) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(165px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
           gap: 10,
           marginBottom: 14,
           background: 'var(--surface)',
@@ -958,57 +1008,96 @@ export default function BobbyAssistant({
         }}
       >
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4 }}>
-            Student Name (Stamped on PDF)
-          </label>
+          <label style={fieldLabelStyle}>NAME</label>
           <input
             type="text"
             value={studentName}
             onChange={e => {
               setStudentName(e.target.value)
+              saveStudentFieldsToStorage({ studentName: e.target.value })
               setHasUnsavedEdits(true)
             }}
             onBlur={() => handleRebuildPdf(variationCount, false)}
-            style={{
-              width: '100%',
-              padding: '7px 10px',
-              borderRadius: 7,
-              border: '1px solid var(--border)',
-              background: 'var(--surface2)',
-              color: 'var(--text)',
-              fontSize: 12.5,
-              boxSizing: 'border-box'
-            }}
+            placeholder="Dhairya Shah"
+            style={fieldInputStyle}
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4 }}>
-            Roll Number (Stamped on PDF)
-          </label>
+          <label style={fieldLabelStyle}>ENROLLMENT NO</label>
+          <input
+            type="text"
+            value={enrollmentNo}
+            onChange={e => {
+              setEnrollmentNo(e.target.value)
+              saveStudentFieldsToStorage({ enrollmentNo: e.target.value })
+              setHasUnsavedEdits(true)
+            }}
+            onBlur={() => handleRebuildPdf(variationCount, false)}
+            placeholder="202402626010056"
+            style={fieldInputStyle}
+          />
+        </div>
+        <div>
+          <label style={fieldLabelStyle}>SEM</label>
+          <input
+            type="text"
+            value={semester}
+            onChange={e => {
+              setSemester(e.target.value)
+              saveStudentFieldsToStorage({ semester: e.target.value })
+              setHasUnsavedEdits(true)
+            }}
+            onBlur={() => handleRebuildPdf(variationCount, false)}
+            placeholder="5"
+            style={fieldInputStyle}
+          />
+        </div>
+        <div>
+          <label style={fieldLabelStyle}>DIV</label>
+          <input
+            type="text"
+            value={division}
+            onChange={e => {
+              setDivision(e.target.value)
+              saveStudentFieldsToStorage({ division: e.target.value })
+              setHasUnsavedEdits(true)
+            }}
+            onBlur={() => handleRebuildPdf(variationCount, false)}
+            placeholder="A"
+            style={fieldInputStyle}
+          />
+        </div>
+        <div>
+          <label style={fieldLabelStyle}>ROLL NO</label>
           <input
             type="text"
             value={rollNumber}
             onChange={e => {
               setRollNumber(e.target.value)
+              saveStudentFieldsToStorage({ rollNumber: e.target.value })
               setHasUnsavedEdits(true)
             }}
             onBlur={() => handleRebuildPdf(variationCount, false)}
-            style={{
-              width: '100%',
-              padding: '7px 10px',
-              borderRadius: 7,
-              border: '1px solid var(--border)',
-              background: 'var(--surface2)',
-              color: 'var(--text)',
-              fontSize: 12.5,
-              boxSizing: 'border-box'
-            }}
+            placeholder="A24CSE057"
+            style={fieldInputStyle}
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text3)', marginBottom: 4 }}>
-            PDF Filename
-          </label>
+          <label style={fieldLabelStyle}>SUBJECT</label>
+          <input
+            type="text"
+            value={subjectName}
+            onChange={e => {
+              setSubjectName(e.target.value)
+              setHasUnsavedEdits(true)
+            }}
+            onBlur={() => handleRebuildPdf(variationCount, false)}
+            placeholder="PPL TASK MODULE(1-15)"
+            style={fieldInputStyle}
+          />
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={fieldLabelStyle}>PDF Filename</label>
           <input
             type="text"
             value={customFilename}
@@ -1017,17 +1106,8 @@ export default function BobbyAssistant({
               setHasUnsavedEdits(true)
             }}
             onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="e.g. a24cse057_Assignment.pdf"
-            style={{
-              width: '100%',
-              padding: '7px 10px',
-              borderRadius: 7,
-              border: '1px solid var(--border)',
-              background: 'var(--surface2)',
-              color: 'var(--text)',
-              fontSize: 12.5,
-              boxSizing: 'border-box'
-            }}
+            placeholder="e.g. A24CSE057_Assignment.pdf"
+            style={fieldInputStyle}
           />
         </div>
       </div>
@@ -1130,8 +1210,7 @@ export default function BobbyAssistant({
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text3)' }}>
-                  {(generatedFile.size / 1024).toFixed(0)} KB · {qaList.length} Question(s) Solved · Stamped for{' '}
-                  {studentName} ({rollNumber})
+                  {(generatedFile.size / 1024).toFixed(0)} KB · {qaList.length} Question(s) Solved · {studentName} ({rollNumber})
                 </div>
               </div>
             </div>
@@ -1155,26 +1234,6 @@ export default function BobbyAssistant({
                 }}
               >
                 <Pencil size={13} /> {isEditing ? 'Viewing Editor' : 'Edit File Content'}
-              </button>
-              <button
-                type="button"
-                onClick={handleShuffleVariation}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '7px 11px',
-                  borderRadius: 8,
-                  background: 'var(--surface2)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text2)',
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-                title="Generate a fresh visual style variation"
-              >
-                <RefreshCw size={13} /> Shuffle Style
               </button>
               <button
                 type="button"

@@ -593,11 +593,11 @@ export default function AssignmentModal({ assignment, onClose }) {
                 <Bot size={18} />
               </div>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>Complete with Bobby (AI Assistant)</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>Bobby Assistant</div>
                 <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
                   {bobbySupportedFiles.length > 0
-                    ? `Sends "${bobbySupportedFiles[0].filename}" to Bobby & generates your personalized PDF`
-                    : 'Sends this assignment prompt to Bobby & generates your personalized PDF'}
+                    ? `Sends "${bobbySupportedFiles[0].filename}" to Bobby & generates your PDF`
+                    : 'Sends this assignment prompt to Bobby & generates your PDF'}
                 </div>
               </div>
             </div>
