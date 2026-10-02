@@ -10,7 +10,6 @@ import { useAppData } from '../context/AppDataContext'
 import { fmt, daysLeft, assignStatus, getViewerUrl, sanitizeHtml, forceDownload } from '../utils/helpers'
 import toast from 'react-hot-toast'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import BobbyAssistant from './BobbyAssistant'
 
 const MAX_SIZE = 2 * 1024 * 1024
 
@@ -251,7 +250,7 @@ const compressDOCX = async (file) => {
 
 export default function AssignmentModal({ assignment, onClose }) {
   const moodle = useMoodle()
-  const { submissions, refreshSubmission, ignoredAssignmentIds = [], ignoreAssignment, unignoreAssignment, role, user } = useAppData()
+  const { submissions, refreshSubmission, ignoredAssignmentIds = [], ignoreAssignment, unignoreAssignment, role, openBobbyWithTask } = useAppData()
   const sub = submissions[assignment?.id]
   const isIgnored = ignoredAssignmentIds.includes(assignment?.id)
   const submittedFiles = sub?.lastattempt?.submission?.plugins
@@ -268,8 +267,6 @@ export default function AssignmentModal({ assignment, onClose }) {
   const compressorFileInputRef = useRef()
   const [compressDragOver, setCompressDragOver] = useState(false)
   const [compressing, setCompressing] = useState(false)
-  const [bobbyOpen, setBobbyOpen] = useState(false)
-  const [bobbyTargetFile, setBobbyTargetFile] = useState(null)
 
   const allAssignmentFiles = [
     ...(assignment?.introattachments || []),
@@ -281,48 +278,13 @@ export default function AssignmentModal({ assignment, onClose }) {
     return ext === 'pdf' || ext === 'docx'
   })
 
-  const handleConfirmBobbySubmit = async (generatedPdfFile) => {
-    if (!generatedPdfFile) return
-    setUploading(true)
-    setError('')
-    try {
-      let fileToUpload = generatedPdfFile
-      if (fileToUpload.size > MAX_SIZE) {
-        toast.loading('Compressing generated PDF below 2MB...', { id: 'bobby-submit' })
-        fileToUpload = await compressPDF(fileToUpload, 0.55, 1.1)
-      }
-      toast.loading('Uploading completed assignment to Moodle...', { id: 'bobby-submit' })
-      const uploadResult = await moodle.uploadFileToDraft(fileToUpload)
-      if (!uploadResult) throw new Error('No response from server')
-      if (uploadResult.error) throw new Error(uploadResult.error)
-      if (!Array.isArray(uploadResult)) throw new Error(JSON.stringify(uploadResult))
-      if (uploadResult[0]?.error) throw new Error(uploadResult[0].error)
-
-      const itemId = uploadResult[0].itemid
-      if (!itemId) throw new Error('No item ID returned from upload')
-
-      const saveRes = await moodle.saveSubmission(assignment.id, itemId)
-      if (saveRes?.exception || saveRes?.errorcode) throw new Error(saveRes.message || saveRes.errorcode)
-
-      try {
-        await moodle.submitForGrading(assignment.id)
-      } catch (submitErr) {
-        console.warn('submitForGrading non-fatal warning:', submitErr)
-      }
-
-      await refreshSubmission(assignment.id)
-      setUploadDone(true)
-      setSelectedFile(null)
-      setBobbyOpen(false)
-      toast.success('Bobby submitted your assignment to Moodle!', { id: 'bobby-submit' })
-    } catch (e) {
-      console.error('Bobby submit error:', e)
-      setError(e.message)
-      toast.error('Submission failed: ' + e.message, { id: 'bobby-submit' })
-      throw e
-    } finally {
-      setUploading(false)
-    }
+  const handleSendToBobbyDrawer = (targetFile = null) => {
+    openBobbyWithTask({
+      assignment,
+      attachmentFile: targetFile || bobbySupportedFiles[0] || null,
+      localFile: null
+    })
+    onClose()
   }
 
   const handleCompressAndSelect = async (file) => {
@@ -525,10 +487,7 @@ export default function AssignmentModal({ assignment, onClose }) {
                     {isBobbySupported && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setBobbyTargetFile(f)
-                          setBobbyOpen(true)
-                        }}
+                        onClick={() => handleSendToBobbyDrawer(f)}
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -560,84 +519,67 @@ export default function AssignmentModal({ assignment, onClose }) {
           </div>
         )}
 
-        {/* Bobby AI Assistant Trigger / Panel (Strictly uses only the assignment's own file/prompt) */}
-        {!bobbyOpen ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 12,
-              padding: '12px 16px',
-              marginBottom: 20,
-              borderRadius: 12,
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06))',
-              border: '1px solid var(--accent-bd)'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 9,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}
-              >
-                <Bot size={18} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13.5 }}>Bobby Assistant</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
-                  {bobbySupportedFiles.length > 0
-                    ? `Sends "${bobbySupportedFiles[0].filename}" to Bobby & generates your PDF`
-                    : 'Sends this assignment prompt to Bobby & generates your PDF'}
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setBobbyTargetFile(bobbySupportedFiles[0] || null)
-                setBobbyOpen(true)
-              }}
+        {/* Bobby Assistant Trigger Banner (Opens Floating Bobby Drawer) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            padding: '12px 16px',
+            marginBottom: 20,
+            borderRadius: 12,
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(16,185,129,0.06))',
+            border: '1px solid var(--accent-bd)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 14px',
+                width: 34,
+                height: 34,
                 borderRadius: 9,
-                border: 'none',
                 background: 'var(--accent)',
                 color: '#fff',
-                fontWeight: 700,
-                fontSize: 12.5,
-                cursor: 'pointer',
-                boxShadow: '0 2px 10px var(--accent-glow)'
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
               }}
             >
-              <Bot size={15} /> Send to Bobby
-            </button>
+              <Bot size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>Bobby Assistant</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
+                {bobbySupportedFiles.length > 0
+                  ? `Opens "${bobbySupportedFiles[0].filename}" in Bobby Assistant box to solve, edit & submit`
+                  : 'Opens this assignment prompt in Bobby Assistant box to solve, edit & submit'}
+              </div>
+            </div>
           </div>
-        ) : (
-          <BobbyAssistant
-            assignment={assignment}
-            attachmentFile={bobbyTargetFile}
-            user={user}
-            moodle={moodle}
-            getPdfjs={getPdfjs}
-            getJSZip={getJSZip}
-            getJsPDF={getJsPDF}
-            onConfirmSubmit={handleConfirmBobbySubmit}
-            onClose={() => setBobbyOpen(false)}
-          />
-        )}
+          <button
+            type="button"
+            onClick={() => handleSendToBobbyDrawer(bobbySupportedFiles[0] || null)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 9,
+              border: 'none',
+              background: 'var(--accent)',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: 12.5,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px var(--accent-glow)'
+            }}
+          >
+            <Bot size={15} /> Send to Bobby
+          </button>
+        </div>
 
         {/* Previously submitted files */}
         {submittedFiles.length > 0 && (

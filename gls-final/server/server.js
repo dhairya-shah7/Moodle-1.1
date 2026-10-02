@@ -142,7 +142,7 @@ app.use(helmet({
         'https://fonts.googleapis.com',
         'https://fonts.gstatic.com',
         'https://formsubmit.co',
-        'https://text.pollinations.ai',
+        'https://en.wikipedia.org',
         'blob:'
       ],
       frameSrc: ["'self'", 'https://docs.google.com', 'blob:'],
@@ -774,61 +774,66 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
       return [stripped || cleanText(qText).slice(0, 80)]
     }
 
+    const deriveSubjectDomain = (cName = '', aName = '') => {
+      const raw = cleanText(`${cName} ${aName}`)
+        .replace(/\b(?:sem(?:ester)?\s*[-:]?\s*\d+|div(?:ision)?\s*[-:]?\s*[a-z]|module\s*[-:]?\s*[\d-]+|unit\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|task\s*[-:]?\s*\d+|b\.?tech|bca|mca|m\.?sc|fcait|\d{4,})\b/gi, ' ')
+        .replace(/[()[\]_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (/divpl|image\s+and\s+video|image\s+processing|computer\s+vision/i.test(raw)) return 'Digital image processing OpenCV'
+      if (/compiler\s+design|automata|toc\b/i.test(raw)) return 'Compiler construction Formal language'
+      if (/data\s+structures|dsa\b|algorithm/i.test(raw)) return 'Data structure Algorithm'
+      if (/probability|statistics/i.test(raw)) return 'Probability and statistics'
+      if (/object\s+oriented|sooad|uml|java/i.test(raw)) return 'Object-oriented programming Software engineering'
+      if (/dbms|database|sql/i.test(raw)) return 'Database management system'
+      if (/operating\s+system|\bos\b|linux|unix/i.test(raw)) return 'Operating system'
+      if (/network|cn\b|tcp/i.test(raw)) return 'Computer network'
+      return raw || 'Computer science'
+    }
+
     const solveQuestionDynamically = async (qText) => {
-      const cleanCourse = cleanText(courseName || assignmentName || 'University Course')
-      const systemPrompt =
-        `You are an expert university professor in "${cleanCourse}". ` +
-        `Provide a direct, complete, step-by-step academic solution to the exact question asked. ` +
-        `If the question contains a mathematical problem, expression, automaton (NFA/DFA), or grammar (LL(1), left recursion, etc.), solve that EXACT example step by step. ` +
-        `If the question asks for code, provide clean runnable code and sample output. ` +
-        `Never output meta-commentary or generic filler.`
-
-      try {
-        const aiRes = await fetch('https://text.pollinations.ai/openai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'openai',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: `Course: ${cleanCourse}\nQuestion: ${qText}\n\nProvide the complete, direct solution:` }
-            ],
-            temperature: 0.2
-          }),
-          timeout: 12000
-        })
-        if (aiRes.ok) {
-          const aiData = await aiRes.json()
-          const content = aiData?.choices?.[0]?.message?.content
-          if (content && content.trim().length > 40) {
-            return cleanText(content)
-          }
-        }
-      } catch {
-        // Fallback to Wikipedia lookup below
-      }
-
+      const cleanCourse = cleanText(courseName || assignmentName || 'Computer Science')
+      const subjectDomain = deriveSubjectDomain(courseName, assignmentName)
       const topics = extractTopics(qText)
       const sections = []
       const wikiHeaders = {
         'User-Agent': 'GLSUniversityMoodlePortal/1.1 (Academic Research Resolver)'
       }
 
-      for (const topic of topics.slice(0, 2)) {
+      for (const topic of topics.slice(0, 4)) {
         try {
-          const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&utf8=&format=json&srlimit=2`
-          const sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
-          if (!sRes.ok) continue
-          const sData = await sRes.json()
-          const bestHit = sData?.query?.search?.[0]
+          const scopedQuery = `${topic} ${subjectDomain}`.trim()
+          let searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(scopedQuery)}&utf8=&format=json&srlimit=2`
+          let sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
+          let sData = sRes.ok ? await sRes.json() : null
+          let bestHit = sData?.query?.search?.[0]
+
+          if (!bestHit?.title) {
+            searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&utf8=&format=json&srlimit=2`
+            sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
+            sData = sRes.ok ? await sRes.json() : null
+            bestHit = sData?.query?.search?.[0]
+          }
           if (!bestHit?.title) continue
+
+          const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exchars=2200&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json`
+          const exRes = await fetch(extractUrl, { headers: wikiHeaders, timeout: 6000 })
+          if (exRes.ok) {
+            const exData = await exRes.json()
+            const pages = exData?.query?.pages || {}
+            const pageObj = Object.values(pages)[0]
+            if (pageObj?.extract && pageObj.extract.trim().length > 60) {
+              sections.push(`${bestHit.title} (${cleanCourse}):\n${cleanText(pageObj.extract)}`)
+              continue
+            }
+          }
 
           const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bestHit.title)}`
           const sumRes = await fetch(sumUrl, { headers: wikiHeaders, timeout: 6000 })
           if (!sumRes.ok) continue
           const sumData = await sumRes.json()
           if (sumData?.extract && sumData.extract.length > 40) {
-            sections.push(`${bestHit.title}:\n${cleanText(sumData.extract)}`)
+            sections.push(`${bestHit.title} (${cleanCourse}):\n${cleanText(sumData.extract)}`)
           }
         } catch {
           // Ignore individual topic lookup error

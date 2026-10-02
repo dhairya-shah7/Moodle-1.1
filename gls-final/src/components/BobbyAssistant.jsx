@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react'
-import { FileText, Download, CheckCircle2, Loader2, AlertTriangle, Bot, X, RefreshCw, Pencil, Plus, Trash2, Save } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { FileText, Download, CheckCircle2, Loader2, AlertTriangle, Bot, X, RefreshCw, Pencil, Plus, Trash2, Save, UploadCloud } from 'lucide-react'
 import toast from 'react-hot-toast'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { useMoodle } from '../hooks/useMoodle'
+import { useAppData } from '../context/AppDataContext'
 import {
   parseQuestions,
   solveMathOrStatsQuestion,
@@ -9,6 +12,43 @@ import {
   synthesizeUniversalAcademicAnswer,
   cleanAcademicText
 } from '../utils/bobbySolverEngine'
+
+const defaultGetJSZip = async () => {
+  if (typeof window !== 'undefined' && typeof window.JSZip === 'function') return window.JSZip
+  const mod = await import('jszip')
+  let zip = mod.default || mod
+  if (typeof zip !== 'function' && zip?.JSZip && typeof zip.JSZip === 'function') zip = zip.JSZip
+  return typeof zip === 'function' ? zip : null
+}
+
+const defaultGetPdfjs = async () => {
+  let pdfjs = typeof window !== 'undefined' ? window.pdfjsLib : null
+  if (!pdfjs) {
+    const mod = await import('pdfjs-dist')
+    pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
+  }
+  if (typeof window !== 'undefined' && !window.pdfjsWorker) {
+    try {
+      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
+      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
+    } catch (_) {}
+  }
+  if (pdfjs && pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  }
+  return pdfjs
+}
+
+const defaultGetJsPDF = async () => {
+  if (typeof window !== 'undefined') {
+    if (typeof window.jspdf?.jsPDF === 'function') return window.jspdf.jsPDF
+    if (typeof window.jsPDF === 'function') return window.jsPDF
+  }
+  const mod = await import('jspdf')
+  let ctor = mod.jsPDF || mod.default?.jsPDF || mod.default
+  if (typeof ctor !== 'function' && ctor?.jsPDF && typeof ctor.jsPDF === 'function') ctor = ctor.jsPDF
+  return typeof ctor === 'function' ? ctor : null
+}
 
 // Deterministic hash from student Roll Number + Name + variation counter so 100+ students get unique wording & PDF layouts
 function computeStudentSeed(str = '') {
@@ -528,16 +568,83 @@ function setSavedDetail(key, val) {
 }
 
 export default function BobbyAssistant({
-  assignment,
-  attachmentFile,
-  user,
-  moodle,
-  getPdfjs,
-  getJSZip,
-  getJsPDF,
+  assignment: propAssignment,
+  attachmentFile: propAttachmentFile,
+  localFile: propLocalFile,
+  user: propUser,
+  moodle: propMoodle,
+  getPdfjs = defaultGetPdfjs,
+  getJSZip = defaultGetJSZip,
+  getJsPDF = defaultGetJsPDF,
   onConfirmSubmit,
-  onClose
+  onClose,
+  embeddedInDrawer = false
 }) {
+  const ctxMoodle = useMoodle()
+  const appData = useAppData() || {}
+  const moodle = propMoodle || ctxMoodle
+  const user = propUser || appData.user
+  const allAssignments = appData.assignments || []
+  const refreshSubmission = appData.refreshSubmission
+
+  const [uploadedLocalFile, setUploadedLocalFile] = useState(propLocalFile || null)
+  const [activeAttachmentFile, setActiveAttachmentFile] = useState(propAttachmentFile || null)
+  const localUploadRef = useRef(null)
+
+  useEffect(() => {
+    setUploadedLocalFile(propLocalFile || null)
+    setActiveAttachmentFile(propAttachmentFile || null)
+  }, [propLocalFile, propAttachmentFile])
+
+  // Determine initial target assignment ID (either from propAssignment.id or matching course assignment)
+  const [targetAssignId, setTargetAssignId] = useState(() => {
+    if (propAssignment?.id) return String(propAssignment.id)
+    const courseIdToMatch = propAssignment?.courseid || propAssignment?.course || propAttachmentFile?.courseid
+    if (courseIdToMatch && allAssignments.length > 0) {
+      const matched = allAssignments.find(a => String(a.course || a.courseid) === String(courseIdToMatch))
+      if (matched) return String(matched.id)
+    }
+    return allAssignments[0]?.id ? String(allAssignments[0].id) : ''
+  })
+
+  useEffect(() => {
+    if (propAssignment?.id) {
+      setTargetAssignId(String(propAssignment.id))
+    } else {
+      const courseIdToMatch = propAssignment?.courseid || propAssignment?.course || propAttachmentFile?.courseid
+      if (courseIdToMatch && allAssignments.length > 0) {
+        const matched = allAssignments.find(a => String(a.course || a.courseid) === String(courseIdToMatch))
+        if (matched) setTargetAssignId(String(matched.id))
+      }
+    }
+  }, [propAssignment?.id, propAssignment?.courseid, propAttachmentFile?.courseid, allAssignments])
+
+  const selectedMoodleAssign =
+    allAssignments.find(a => String(a.id) === String(targetAssignId)) || propAssignment || {}
+
+  const effectiveAssignment = {
+    id: selectedMoodleAssign?.id || propAssignment?.id || 0,
+    name:
+      propAssignment?.name ||
+      uploadedLocalFile?.name?.replace(/\.[^.]+$/, '') ||
+      activeAttachmentFile?.filename?.replace(/\.[^.]+$/, '') ||
+      selectedMoodleAssign?.name ||
+      'Assignment',
+    coursename:
+      propAssignment?.coursename ||
+      activeAttachmentFile?.coursename ||
+      selectedMoodleAssign?.coursename ||
+      propAssignment?.courseshort ||
+      activeAttachmentFile?.courseshort ||
+      'Computer Science',
+    courseshort:
+      propAssignment?.courseshort ||
+      activeAttachmentFile?.courseshort ||
+      selectedMoodleAssign?.courseshort ||
+      '',
+    intro: propAssignment?.intro || selectedMoodleAssign?.intro || ''
+  }
+
   const rawUserRoll = (user?.username || 'A24CSE057').trim().toUpperCase()
   const rawFullName = (user?.fullname || `${user?.firstname || ''} ${user?.lastname || ''}`).trim()
   // Strip leading roll number from Moodle fullname if present (e.g. "a24cse057 Dhairya Shah" -> "Dhairya Shah")
@@ -547,7 +654,7 @@ export default function BobbyAssistant({
     rawFullName ||
     'Student'
 
-  const coursePlusAssign = `${assignment?.coursename || ''} ${assignment?.name || ''}`
+  const coursePlusAssign = `${effectiveAssignment.coursename || ''} ${effectiveAssignment.name || ''}`
   const semMatch = coursePlusAssign.match(/\bSem(?:ester)?\s*[-:]?\s*(\d+)\b/i)
   const divMatch =
     coursePlusAssign.match(/\bDiv(?:ision)?\s*[-:]?\s*([A-Z])\b/i) ||
@@ -558,7 +665,9 @@ export default function BobbyAssistant({
     (rawUserRoll === 'A24CSE057' ? '202402626010056' : '')
   const defaultSem = semMatch ? semMatch[1] : '5'
   const defaultDiv = divMatch ? divMatch[1].toUpperCase() : 'A'
-  const defaultSubject = cleanAiAnswerText(assignment?.coursename || assignment?.name || 'SUBJECT').toUpperCase()
+  const defaultSubject = cleanAiAnswerText(
+    effectiveAssignment.coursename || effectiveAssignment.name || 'SUBJECT'
+  ).toUpperCase()
 
   const storagePrefix = `bobby_student_${rawUserRoll.toLowerCase()}_`
 
@@ -579,6 +688,15 @@ export default function BobbyAssistant({
   const [isEditing, setIsEditing] = useState(false)
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
 
+  useEffect(() => {
+    const nextSubj = cleanAiAnswerText(
+      effectiveAssignment.coursename || effectiveAssignment.name || 'SUBJECT'
+    ).toUpperCase()
+    if (nextSubj && nextSubj !== 'SUBJECT') {
+      setSubjectName(nextSubj)
+    }
+  }, [effectiveAssignment.coursename, effectiveAssignment.name])
+
   const saveStudentFieldsToStorage = (next = {}) => {
     if (next.studentName !== undefined) setSavedDetail(`${storagePrefix}name`, next.studentName)
     if (next.enrollmentNo !== undefined) setSavedDetail(`${storagePrefix}enrollment`, next.enrollmentNo)
@@ -588,31 +706,45 @@ export default function BobbyAssistant({
   }
 
   const getCurrentSeed = (nameVal = studentName, rollVal = rollNumber, varIdx = variationCount) => {
-    return computeStudentSeed(`${rollVal.trim().toLowerCase()}|${nameVal.trim().toLowerCase()}|${assignment?.id || 0}|${varIdx}`)
+    return computeStudentSeed(`${rollVal.trim().toLowerCase()}|${nameVal.trim().toLowerCase()}|${effectiveAssignment?.id || 0}|${varIdx}`)
   }
 
-  const runBobbyPipeline = async (customVarIdx = variationCount) => {
+  const runBobbyPipeline = async (customVarIdx = variationCount, overrideLocalFile = uploadedLocalFile, overrideAttachment = activeAttachmentFile) => {
     setStatus('processing')
     setErrorMsg('')
     try {
       let extractedText = ''
 
-      if (attachmentFile) {
-        const ext = (attachmentFile.filename || '').split('.').pop().toLowerCase()
+      if (overrideLocalFile) {
+        const ext = (overrideLocalFile.name || '').split('.').pop().toLowerCase()
         if (ext !== 'pdf' && ext !== 'docx') {
           throw new Error(`Bobby only supports .pdf or .docx assignment files (found .${ext}).`)
         }
-        setStepText(`Fetching "${attachmentFile.filename}" from Moodle...`)
-        const downloadUrl =
-          attachmentFile.fileurl +
-          (attachmentFile.fileurl.includes('?') ? '&' : '?') +
-          'token=' +
-          moodle.token
+        if (ext === 'pdf') {
+          setStepText(`Reading uploaded PDF "${overrideLocalFile.name}"...`)
+          const pdfResult = await extractPdfData(overrideLocalFile, getPdfjs)
+          extractedText = pdfResult.text
+        } else if (ext === 'docx') {
+          setStepText(`Extracting questions from "${overrideLocalFile.name}"...`)
+          extractedText = await extractDocxText(overrideLocalFile, getJSZip)
+        }
+      } else if (overrideAttachment) {
+        const fileName = overrideAttachment.filename || 'assignment.pdf'
+        const ext = fileName.split('.').pop().toLowerCase()
+        if (ext !== 'pdf' && ext !== 'docx') {
+          throw new Error(`Bobby only supports .pdf or .docx assignment files (found .${ext}).`)
+        }
+        setStepText(`Fetching "${fileName}" from Moodle...`)
+        const rawUrl = overrideAttachment.fileurl || overrideAttachment.url || ''
+        const hasToken = /[?&]token=/.test(rawUrl)
+        const downloadUrl = hasToken
+          ? rawUrl
+          : rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'token=' + moodle.token
 
         const blob = await moodle.fetchFileBlob(downloadUrl)
 
         if (ext === 'pdf') {
-          setStepText('Reading Assignment PDF text, tables & diagrams...')
+          setStepText('Reading Assignment PDF text, tables & sub-questions...')
           const pdfResult = await extractPdfData(blob, getPdfjs)
           extractedText = pdfResult.text
         } else if (ext === 'docx') {
@@ -621,11 +753,11 @@ export default function BobbyAssistant({
         }
       }
 
-      const introPlain = stripHtml(assignment.intro || '')
+      const introPlain = stripHtml(effectiveAssignment.intro || '')
       const combinedText = [extractedText, introPlain].filter(Boolean).join('\n\n')
 
       setStepText('Parsing questions & solving assignment...')
-      const questions = parseQuestions(combinedText, assignment.name, assignment.coursename)
+      const questions = parseQuestions(combinedText, effectiveAssignment.name, effectiveAssignment.coursename)
       setRawQuestions(questions)
 
       const seed = getCurrentSeed(studentName, rollNumber, customVarIdx)
@@ -635,8 +767,8 @@ export default function BobbyAssistant({
           q,
           idx,
           seed,
-          assignment.coursename || assignment.courseshort || '',
-          assignment.name || ''
+          effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
+          effectiveAssignment.name || ''
         )
       )
       const allSolvedLocally = questions.length > 0 && localMatches.every(Boolean)
@@ -650,7 +782,7 @@ export default function BobbyAssistant({
           answer: normalizePlainAnswer(localMatches[idx])
         }))
       } else {
-        setStepText(`Resolving remaining questions...`)
+        setStepText(`Resolving subject-specific answers...`)
         let factualMap = {}
         try {
           const solveRes = await fetch('/proxy/bobby/solve', {
@@ -658,8 +790,8 @@ export default function BobbyAssistant({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               token: moodle.token,
-              courseName: cleanAiAnswerText(assignment.coursename || assignment.courseshort || ''),
-              assignmentName: cleanAiAnswerText(assignment.name || ''),
+              courseName: cleanAiAnswerText(effectiveAssignment.coursename || effectiveAssignment.courseshort || ''),
+              assignmentName: cleanAiAnswerText(effectiveAssignment.name || ''),
               extractedText: combinedText,
               questions,
               studentSeed: seed
@@ -683,8 +815,8 @@ export default function BobbyAssistant({
         if (missingCount > 0) {
           const directMap = await solveWithFactualEncyclopedia(
             questions,
-            assignment.coursename || assignment.courseshort || '',
-            assignment.name || '',
+            effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
+            effectiveAssignment.name || '',
             msg => setStepText(msg),
             factualMap,
             localMatches
@@ -712,7 +844,7 @@ export default function BobbyAssistant({
               answer: normalizePlainAnswer(factualMap[idx + 1])
             }
           }
-          const fallbackObj = generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
+          const fallbackObj = generateAnswerForQuestion(q, idx, effectiveAssignment.name, effectiveAssignment.coursename, seed)
           return {
             ...fallbackObj,
             answer: normalizePlainAnswer(fallbackObj.answer)
@@ -726,7 +858,7 @@ export default function BobbyAssistant({
       setStepText('Building plain-text PDF with your Student Details...')
       const pdfFile = await compileCompletedPdf({
         getJsPDF,
-        assignment,
+        assignment: effectiveAssignment,
         studentName: studentName.trim(),
         enrollmentNo: enrollmentNo.trim(),
         semester: semester.trim(),
@@ -752,15 +884,21 @@ export default function BobbyAssistant({
   }
 
   useEffect(() => {
-    runBobbyPipeline(0)
+    runBobbyPipeline(0, uploadedLocalFile, activeAttachmentFile)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [attachmentFile?.fileurl])
+  }, [
+    activeAttachmentFile?.fileurl,
+    activeAttachmentFile?.url,
+    uploadedLocalFile?.name,
+    uploadedLocalFile?.size,
+    propAssignment?.id
+  ])
 
   const recompileFromCurrentQa = async (targetQa = qaList, targetFilename = customFilename, varIdx = variationCount) => {
     const seed = getCurrentSeed(studentName, rollNumber, varIdx)
     const pdfFile = await compileCompletedPdf({
       getJsPDF,
-      assignment,
+      assignment: effectiveAssignment,
       studentName: studentName.trim(),
       enrollmentNo: enrollmentNo.trim(),
       semester: semester.trim(),
@@ -805,7 +943,7 @@ export default function BobbyAssistant({
       const seed = getCurrentSeed(studentName, rollNumber, nextVarIdx)
       const nextQa = regenerateAnswers
         ? questionsToUse.map((q, idx) =>
-            generateAnswerForQuestion(q, idx, assignment.name, assignment.coursename, seed)
+            generateAnswerForQuestion(q, idx, effectiveAssignment.name, effectiveAssignment.coursename, seed)
           )
         : qaList
 
@@ -815,7 +953,7 @@ export default function BobbyAssistant({
 
       const pdfFile = await compileCompletedPdf({
         getJsPDF,
-        assignment,
+        assignment: effectiveAssignment,
         studentName: studentName.trim(),
         enrollmentNo: enrollmentNo.trim(),
         semester: semester.trim(),
@@ -903,12 +1041,62 @@ export default function BobbyAssistant({
         fileToSubmit = await recompileFromCurrentQa(qaList, customFilename, variationCount)
       }
       if (!fileToSubmit) return
-      await onConfirmSubmit(fileToSubmit)
+
+      if (onConfirmSubmit) {
+        await onConfirmSubmit(fileToSubmit)
+        setStatus('ready')
+        return
+      }
+
+      const finalAssignId = Number(targetAssignId || effectiveAssignment?.id || 0)
+      if (!finalAssignId) {
+        toast.error('Please select a target Moodle Assignment to submit to.')
+        setStatus('ready')
+        return
+      }
+
+      toast.loading('Uploading completed assignment to Moodle...', { id: 'bobby-submit' })
+      const uploadResult = await moodle.uploadFileToDraft(fileToSubmit)
+      if (!uploadResult) throw new Error('No response from server')
+      if (uploadResult.error) throw new Error(uploadResult.error)
+      if (!Array.isArray(uploadResult)) throw new Error(JSON.stringify(uploadResult))
+      if (uploadResult[0]?.error) throw new Error(uploadResult[0].error)
+
+      const itemId = uploadResult[0].itemid
+      if (!itemId) throw new Error('No item ID returned from upload')
+
+      const saveRes = await moodle.saveSubmission(finalAssignId, itemId)
+      if (saveRes?.exception || saveRes?.errorcode) throw new Error(saveRes.message || saveRes.errorcode)
+
+      try {
+        await moodle.submitForGrading(finalAssignId)
+      } catch (submitErr) {
+        console.warn('submitForGrading non-fatal warning:', submitErr)
+      }
+
+      if (refreshSubmission) {
+        await refreshSubmission(finalAssignId)
+      }
+      toast.success('Bobby submitted your assignment to Moodle!', { id: 'bobby-submit' })
       setStatus('ready')
     } catch (err) {
       setErrorMsg(err.message || 'Submission failed')
+      toast.error('Submission failed: ' + (err.message || 'Unknown error'), { id: 'bobby-submit' })
       setStatus('ready')
     }
+  }
+
+  const handleLocalFilePicked = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const ext = file.name.split('.').pop().toLowerCase()
+    if (ext !== 'pdf' && ext !== 'docx') {
+      toast.error('Please upload a .pdf or .docx file.')
+      return
+    }
+    setUploadedLocalFile(file)
+    setActiveAttachmentFile(null)
+    e.target.value = ''
   }
 
   const fieldInputStyle = {
@@ -935,70 +1123,107 @@ export default function BobbyAssistant({
   return (
     <div
       style={{
-        background: 'linear-gradient(145deg, rgba(99,102,241,0.10), rgba(16,185,129,0.06))',
-        border: '1px solid var(--accent)',
-        borderRadius: 14,
-        padding: '18px',
-        marginBottom: 20,
+        background: embeddedInDrawer
+          ? 'transparent'
+          : 'linear-gradient(145deg, rgba(99,102,241,0.10), rgba(16,185,129,0.06))',
+        border: embeddedInDrawer ? 'none' : '1px solid var(--accent)',
+        borderRadius: embeddedInDrawer ? 0 : 14,
+        padding: embeddedInDrawer ? '4px 2px' : '18px',
+        marginBottom: embeddedInDrawer ? 0 : 20,
         position: 'relative'
       }}
     >
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              background: 'var(--accent)',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 16px var(--accent-glow)'
-            }}
-          >
-            <Bot size={20} />
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-              Bobby Assistant
+      {/* Header / Source & Upload Bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          {!embeddedInDrawer && (
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: 'var(--accent)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 16px var(--accent-glow)',
+                flexShrink: 0
+              }}
+            >
+              <Bot size={20} />
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>
-              {attachmentFile
-                ? `Source File: ${attachmentFile.filename}`
-                : `Source: ${assignment.name}`}
+          )}
+          <div style={{ minWidth: 0 }}>
+            {!embeddedInDrawer && (
+              <div style={{ fontWeight: 800, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                Bobby
+              </div>
+            )}
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {uploadedLocalFile
+                ? `Uploaded File: ${uploadedLocalFile.name}`
+                : activeAttachmentFile
+                  ? `Source File: ${activeAttachmentFile.filename}`
+                  : `Source: ${effectiveAssignment.name}`}
             </div>
           </div>
         </div>
-        {onClose && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            ref={localUploadRef}
+            type="file"
+            accept=".pdf,.docx"
+            style={{ display: 'none' }}
+            onChange={handleLocalFilePicked}
+          />
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => localUploadRef.current?.click()}
             style={{
-              background: 'var(--surface2)',
-              border: '1px solid var(--border)',
-              borderRadius: 8,
-              width: 28,
-              height: 28,
-              cursor: 'pointer',
-              color: 'var(--text2)',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: 5,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-soft)',
+              color: 'var(--accent)',
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: 'pointer'
             }}
           >
-            <X size={15} />
+            <UploadCloud size={13} /> Upload PDF/DOCX
           </button>
-        )}
+          {onClose && !embeddedInDrawer && (
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                background: 'var(--surface2)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                width: 28,
+                height: 28,
+                cursor: 'pointer',
+                color: 'var(--text2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Editable Student Details Block (Matches PDF Top Header Format) */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: 10,
           marginBottom: 14,
           background: 'var(--surface)',
@@ -1453,6 +1678,36 @@ export default function BobbyAssistant({
             </div>
           )}
 
+          {/* Target Assignment Selector (for submitting from Courses/Files or direct upload) */}
+          {!onConfirmSubmit && allAssignments.length > 0 && (
+            <div
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '9px 12px',
+                marginBottom: 10
+              }}
+            >
+              <label style={fieldLabelStyle}>Target Moodle Assignment for Submission</label>
+              <select
+                value={targetAssignId}
+                onChange={e => setTargetAssignId(e.target.value)}
+                style={{
+                  ...fieldInputStyle,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">-- Select Assignment to Submit To --</option>
+                {allAssignments.map(a => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.courseshort || a.coursename} — {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Manual Confirmation & Submit Button */}
           <button
             type="button"
@@ -1491,3 +1746,4 @@ export default function BobbyAssistant({
     </div>
   )
 }
+

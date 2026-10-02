@@ -37,6 +37,19 @@ export function AppDataProvider({ children }) {
 
   const [hiddenCourseIds, setHiddenCourseIds] = useState([])
   const [ignoredAssignmentIds, setIgnoredAssignmentIds] = useState([])
+  const [bobbySession, setBobbySession] = useState(null)
+
+  const openBobbyWithTask = useCallback((payload = {}) => {
+    setBobbySession({
+      ...payload,
+      isOpen: true,
+      sessionId: Date.now()
+    })
+  }, [])
+
+  const closeBobbySession = useCallback(() => {
+    setBobbySession(null)
+  }, [])
 
   useEffect(() => {
     if (user?.userid) {
@@ -393,7 +406,10 @@ export function AppDataProvider({ children }) {
       ignoredAssignmentIds,
       ignoreAssignment,
       unignoreAssignment,
-      loadFilesForCourse
+      loadFilesForCourse,
+      bobbySession,
+      openBobbyWithTask,
+      closeBobbySession
     }}>
       {children}
     </AppDataContext.Provider>

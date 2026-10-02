@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAppData } from '../context/AppDataContext'
-import { fileIcon, truncate, getViewerUrl, getFormattedDate, forceDownload } from '../utils/helpers'
+import { fileIcon, truncate, getViewerUrl, forceDownload } from '../utils/helpers'
 import Spinner from '../components/Spinner'
 import { 
-  FileText, FilePlus, FileSpreadsheet, FilePieChart as FilePPT, 
+  FileText, FileSpreadsheet, FilePieChart as FilePPT, 
   FileArchive, Video, Image, Link as LinkIcon, 
   Search, LayoutGrid, List, ExternalLink, Download, 
-  ChevronUp, ChevronDown, Folder, Library, File
+  ChevronUp, ChevronDown, Folder, Library, File, Bot, Upload
 } from 'lucide-react'
 
 const EXT_COLOR = {
@@ -42,12 +42,19 @@ const fmtDate = (ts) => {
   return new Date(ts * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function FileCard({ f }) {
+const isBobbyCompatibleFile = (f) => {
+  if (!f || f.itemType === 'link') return false
+  const ext = (f.filename || '').split('.').pop()?.toLowerCase()
+  return ext === 'pdf' || ext === 'docx'
+}
+
+function FileCard({ f, onSendToBobby }) {
   const isLink = f.itemType === 'link'
   const iconType = isLink ? 'link' : fileIcon(f.filename)
   const color = isLink ? 'var(--accent)' : (EXT_COLOR[iconType] || 'var(--text3)')
   const viewerUrl = isLink ? f.url : getViewerUrl(f.url, f.filename)
   const href = viewerUrl || f.url
+  const canSendToBobby = isBobbyCompatibleFile(f)
 
   const handleCardClick = () => {
     window.open(href, '_blank')
@@ -60,6 +67,11 @@ function FileCard({ f }) {
     } else {
       forceDownload(f.url, f.filename)
     }
+  }
+
+  const handleBobbyClick = (e) => {
+    e.stopPropagation()
+    onSendToBobby?.(f)
   }
 
   return (
@@ -79,19 +91,44 @@ function FileCard({ f }) {
         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
           {f.filename}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
             {fmtSize(f.filesize) && <span>{fmtSize(f.filesize)}</span>}
             {fmtSize(f.filesize) && fmtDate(f.timemodified) && <span>·</span>}
             {fmtDate(f.timemodified) && <span>{fmtDate(f.timemodified)}</span>}
           </div>
-          <div 
-            onClick={handleActionClick}
-            className="row-hover"
-            style={{ flexShrink: 0, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            {isLink ? <ExternalLink size={12} /> : <Download size={12} />}
-            {isLink ? 'Open' : 'Save'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            {canSendToBobby && (
+              <button
+                type="button"
+                onClick={handleBobbyClick}
+                style={{
+                  flexShrink: 0,
+                  padding: '4px 8px',
+                  background: 'var(--accent-soft)',
+                  border: '1px solid var(--accent)',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: 'var(--accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  cursor: 'pointer'
+                }}
+                title="Send this file to Bobby Assistant"
+              >
+                <Bot size={12} /> Bobby
+              </button>
+            )}
+            <div 
+              onClick={handleActionClick}
+              className="row-hover"
+              style={{ flexShrink: 0, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              {isLink ? <ExternalLink size={12} /> : <Download size={12} />}
+              {isLink ? 'Open' : 'Save'}
+            </div>
           </div>
         </div>
       </div>
@@ -99,11 +136,12 @@ function FileCard({ f }) {
   )
 }
 
-function FileRow({ f }) {
+function FileRow({ f, onSendToBobby }) {
   const isLink = f.itemType === 'link'
   const iconType = isLink ? 'link' : fileIcon(f.filename)
   const color = isLink ? 'var(--accent)' : (EXT_COLOR[iconType] || 'var(--text3)')
   const viewerUrl = isLink ? f.url : getViewerUrl(f.url, f.filename)
+  const canSendToBobby = isBobbyCompatibleFile(f)
 
   const handleActionClick = (e) => {
     e.preventDefault()
@@ -115,11 +153,11 @@ function FileRow({ f }) {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
       <div style={{ width: 38, height: 38, borderRadius: 9, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
         {getIcon(iconType, 20)}
       </div>
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, minWidth: 160, overflow: 'hidden' }}>
         {viewerUrl ? (
           <a href={viewerUrl} target="_blank" rel="noreferrer"
             style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
@@ -134,6 +172,29 @@ function FileRow({ f }) {
       <span style={{ background: color + '18', color, fontSize: 10, fontWeight: 800, padding: '3px 8px', borderRadius: 6, flexShrink: 0 }}>
         {(isLink ? 'LINK' : (f.filename || '').split('.').pop()).toUpperCase().slice(0, 4)}
       </span>
+      {canSendToBobby && (
+        <button
+          type="button"
+          onClick={() => onSendToBobby?.(f)}
+          style={{
+            padding: '7px 12px',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent)',
+            color: 'var(--accent)',
+            borderRadius: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}
+        >
+          <Bot size={14} /> Send to Bobby
+        </button>
+      )}
       <a href={f.url} onClick={handleActionClick}
         style={{ padding: '7px 14px', background: 'var(--accent)', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
         {isLink ? <ExternalLink size={14} /> : <Download size={14} />}
@@ -144,9 +205,10 @@ function FileRow({ f }) {
 }
 
 export default function Files() {
-  const { files, loading, loadFilesForCourse } = useAppData()
+  const { files, loading, loadFilesForCourse, openBobbyWithTask } = useAppData()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const bobbyUploadInputRef = useRef(null)
 
   const courseId = searchParams.get('courseId')
   const initialSearch = searchParams.get('search') || ''
@@ -164,6 +226,42 @@ export default function Files() {
       loadFilesForCourse(courseId)
     }
   }, [courseId, loadFilesForCourse])
+
+  const selectedCourseObj = courseId ? files.find(f => String(f.courseid) === String(courseId)) : null
+  const selectedCourseName = selectedCourseObj?.coursename || ''
+
+  const handleSendCourseFileToBobby = (f) => {
+    openBobbyWithTask({
+      attachmentFile: f,
+      localFile: null,
+      assignment: {
+        courseid: f.courseid,
+        coursename: f.coursename || selectedCourseName || '',
+        courseshort: f.courseshort || '',
+        name: (f.filename || 'Course Assignment').replace(/\.[^.]+$/, '')
+      }
+    })
+  }
+
+  const handleLocalFileForBobby = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    openBobbyWithTask({
+      localFile: file,
+      attachmentFile: null,
+      assignment: selectedCourseObj
+        ? {
+            courseid: selectedCourseObj.courseid,
+            coursename: selectedCourseObj.coursename || '',
+            courseshort: selectedCourseObj.courseshort || '',
+            name: file.name.replace(/\.[^.]+$/, '')
+          }
+        : {
+            name: file.name.replace(/\.[^.]+$/, '')
+          }
+    })
+    e.target.value = ''
+  }
 
   const handleSearchChange = (value) => {
     setSearch(value)
@@ -210,14 +308,20 @@ export default function Files() {
   const fileCount = contextFiles.filter(f => f.itemType === 'file').length
   const linkCount = contextFiles.filter(f => f.itemType === 'link').length
 
-  const selectedCourseName = courseId ? (files.find(f => String(f.courseid) === String(courseId))?.coursename || 'Course Materials') : ''
-
   if (loading && courseId && !files.some(f => String(f.courseid) === String(courseId))) {
     return <Spinner text="Loading faculty files..." />
   }
 
   return (
     <div>
+      <input
+        ref={bobbyUploadInputRef}
+        type="file"
+        accept=".pdf,.docx"
+        style={{ display: 'none' }}
+        onChange={handleLocalFileForBobby}
+      />
+
       {(initialSearch || courseId) && (
         <button
           onClick={() => navigate('/courses')}
@@ -245,8 +349,29 @@ export default function Files() {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
         <div>
           <div className="page-title">{selectedCourseName || 'Faculty Files'}</div>
-          <div className="page-sub" style={{ marginBottom: 0 }}>All course materials — grouped by subject and section</div>
+          <div className="page-sub" style={{ marginBottom: 0 }}>All course materials — send any PDF/Word assignment to Bobby or upload directly</div>
         </div>
+        <button
+          type="button"
+          onClick={() => bobbyUploadInputRef.current?.click()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            borderRadius: 11,
+            border: '1px solid var(--accent)',
+            background: 'linear-gradient(135deg, rgba(99,102,241,0.14), rgba(245,158,11,0.12))',
+            color: 'var(--accent)',
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: 'pointer'
+          }}
+        >
+          <Bot size={16} />
+          <Upload size={14} />
+          Upload PDF/Word to Bobby
+        </button>
       </div>
 
       {/* Stats + controls */}
@@ -322,12 +447,12 @@ export default function Files() {
                     <Folder size={14} color="var(--accent)" /> {secName} &nbsp;·&nbsp; {secFiles.length} item{secFiles.length !== 1 ? 's' : ''}
                   </div>
                   {viewMode === 'grid' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))', gap: 16, padding: '18px 22px 20px' }}>
-                      {secFiles.map((f, i) => <FileCard key={i} f={f} />)}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 210px), 1fr))', gap: 16, padding: '18px 22px 20px' }}>
+                      {secFiles.map((f, i) => <FileCard key={i} f={f} onSendToBobby={handleSendCourseFileToBobby} />)}
                     </div>
                   ) : (
                     <div style={{ paddingBottom: 8 }}>
-                      {secFiles.map((f, i) => <FileRow key={i} f={f} />)}
+                      {secFiles.map((f, i) => <FileRow key={i} f={f} onSendToBobby={handleSendCourseFileToBobby} />)}
                     </div>
                   )}
                 </div>
@@ -339,3 +464,4 @@ export default function Files() {
     </div>
   )
 }
+
