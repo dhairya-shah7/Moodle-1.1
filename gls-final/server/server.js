@@ -758,16 +758,39 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
         .trim()
     }
 
-    const isRelevantWikiTitle = (title = '') => {
+    const isRelevantWikiTitle = (title = '', snippet = '') => {
       const t = String(title || '').trim()
+      const s = String(snippet || '').trim()
       if (!t) return false
       if (/^(?:list\s+of|lists\s+of|glossary\s+of|index\s+of|outline\s+of|timeline\s+of|category:|portal:|template:|wikipedia:)/i.test(t)) {
         return false
       }
-      if (/\b(?:disambiguation|united\s+states|united\s+kingdom|culture\s+of|history\s+of\s+the|economy\s+of|politics\s+of|demographics\s+of|playstation|xbox|nintendo|filmography|discography|album|television\s+series|football|cricket)\b/i.test(t)) {
+      if (/\b(?:disambiguation|united\s+states|united\s+kingdom|culture\s+of|history\s+of\s+the|economy\s+of|politics\s+of|demographics\s+of|playstation|xbox|nintendo|filmography|discography|album|television\s+series|football|cricket|monty\s+python|elvis\s+presley|amazing\s+race|social\s+network|reddit|ti-84|flowgorithm|esp32|game\s+of\s+life|irish\s+logarithm|sitcom|comedy\s+troupe|reality\s+competition)\b/i.test(`${t} ${s}`)) {
         return false
       }
       return true
+    }
+
+    const reconstructOpenAlex = (inv) => {
+      if (!inv || typeof inv !== 'object') return ''
+      let maxPos = 0
+      for (const positions of Object.values(inv)) {
+        if (Array.isArray(positions)) {
+          for (const p of positions) {
+            if (typeof p === 'number' && p > maxPos && p < 4000) maxPos = p
+          }
+        }
+      }
+      if (maxPos === 0) return ''
+      const words = new Array(maxPos + 1).fill('')
+      for (const [w, positions] of Object.entries(inv)) {
+        if (Array.isArray(positions)) {
+          for (const p of positions) {
+            if (typeof p === 'number' && p >= 0 && p <= maxPos) words[p] = w
+          }
+        }
+      }
+      return words.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
     }
 
     const extractTopics = (qText = '') => {
@@ -805,6 +828,7 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
       if (/dbms|database|sql/i.test(raw)) return 'Database management system'
       if (/operating\s+system|\bos\b|linux|unix/i.test(raw)) return 'Operating system'
       if (/network|cn\b|tcp/i.test(raw)) return 'Computer network'
+      if (/management|marketing|finance|accounting|economics|commerce|business|\bmba\b|\bbba\b/i.test(raw)) return 'Business administration Financial management'
       return raw || 'Computer science'
     }
 
@@ -821,47 +845,60 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
       }
 
       for (const topic of topics.slice(0, 3)) {
+        const cleanTopic = topic.replace(/\b\d{4}\b/g, '').trim()
+        if (!cleanTopic) continue
+        let resolved = false
+
         try {
-          const cleanTopic = topic.replace(/\b\d{4}\b/g, '').trim()
-          if (!cleanTopic) continue
           const scopedQuery = `${cleanTopic} ${subjectDomain}`.trim()
           let searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(scopedQuery)}&utf8=&format=json&srlimit=5`
           let sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
           let sData = sRes.ok ? await sRes.json() : null
-          let hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title))
+          let hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title, h.snippet))
           let bestHit = hits[0]
 
           if (!bestHit?.title) {
             searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanTopic)}&utf8=&format=json&srlimit=5`
             sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
             sData = sRes.ok ? await sRes.json() : null
-            hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title))
+            hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title, h.snippet))
             bestHit = hits[0]
           }
-          if (!bestHit?.title || seenTitles.has(bestHit.title.toLowerCase())) continue
-          seenTitles.add(bestHit.title.toLowerCase())
-
-          const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exchars=1800&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json`
-          const exRes = await fetch(extractUrl, { headers: wikiHeaders, timeout: 6000 })
-          if (exRes.ok) {
-            const exData = await exRes.json()
-            const pages = exData?.query?.pages || {}
-            const pageObj = Object.values(pages)[0]
-            if (pageObj?.extract && pageObj.extract.trim().length > 60) {
-              sections.push(`${bestHit.title} (${cleanCourse}):\n${cleanText(pageObj.extract)}`)
-              continue
+          if (bestHit?.title && !seenTitles.has(bestHit.title.toLowerCase())) {
+            const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exchars=1800&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json`
+            const exRes = await fetch(extractUrl, { headers: wikiHeaders, timeout: 6000 })
+            if (exRes.ok) {
+              const exData = await exRes.json()
+              const pages = exData?.query?.pages || {}
+              const pageObj = Object.values(pages)[0]
+              if (pageObj?.extract && pageObj.extract.trim().length > 60 && isRelevantWikiTitle(bestHit.title, pageObj.extract.slice(0, 350))) {
+                seenTitles.add(bestHit.title.toLowerCase())
+                sections.push(`${bestHit.title} (${cleanCourse}):\n${cleanText(pageObj.extract)}`)
+                resolved = true
+              }
             }
           }
-
-          const sumUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bestHit.title)}`
-          const sumRes = await fetch(sumUrl, { headers: wikiHeaders, timeout: 6000 })
-          if (!sumRes.ok) continue
-          const sumData = await sumRes.json()
-          if (sumData?.extract && sumData.extract.length > 40) {
-            sections.push(`${bestHit.title} (${cleanCourse}):\n${cleanText(sumData.extract)}`)
-          }
         } catch {
-          // Ignore individual topic lookup error
+          // Ignore MediaWiki error and try OpenAlex
+        }
+
+        if (!resolved) {
+          try {
+            const oaUrl = `https://api.openalex.org/works?search=${encodeURIComponent(`${cleanTopic} ${subjectDomain}`)}&per-page=3`
+            const oaRes = await fetch(oaUrl, { headers: wikiHeaders, timeout: 6000 })
+            if (oaRes.ok) {
+              const oaData = await oaRes.json()
+              for (const work of oaData?.results || []) {
+                const abs = reconstructOpenAlex(work?.abstract_inverted_index)
+                if (abs && abs.length > 80) {
+                  sections.push(`${cleanTopic} — Academic Analysis (${cleanCourse}):\n${cleanText(abs)}`)
+                  break
+                }
+              }
+            }
+          } catch {
+            // Ignore OpenAlex error
+          }
         }
       }
       return sections.length > 0 ? sections.join('\n\n') : ''
@@ -1428,24 +1465,46 @@ app.use(express.static(path.join(__dirname, '../dist'), {
   }
 }))
 
-// Ensure any request for pdf.worker*.mjs always serves the active worker bundle (never index.html)
-app.get('/assets/pdf.worker*.mjs', (req, res) => {
+// Ensure any request under /assets/* NEVER falls through to index.html ('text/html')
+// If a client requests a chunk with a stale hash after a redeploy (e.g. pdf-OLD.js, jspdf-OLD.js, pdf.worker-OLD.mjs),
+// resolve it to the current built asset with the same base prefix in dist/assets/.
+app.get('/assets/:filename', (req, res) => {
   try {
+    const reqName = String(req.params.filename || '')
     const assetsDir = path.join(__dirname, '../dist/assets')
     if (fs.existsSync(assetsDir)) {
-      const workerFile = fs.readdirSync(assetsDir).find(f => f.startsWith('pdf.worker') && f.endsWith('.mjs'))
-      if (workerFile) {
-        res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+      const files = fs.readdirSync(assetsDir)
+      const extMatch = reqName.match(/\.(mjs|js|css)$/i)
+      const prefixMatch = reqName.match(/^([a-zA-Z0-9._]+?)-[a-zA-Z0-9_-]+\.(mjs|js|css)$/i)
+      let matchedFile = files.find(f => f === reqName)
+      if (!matchedFile && prefixMatch) {
+        const basePrefix = prefixMatch[1] + '-'
+        const ext = '.' + prefixMatch[2].toLowerCase()
+        matchedFile = files.find(f => f.startsWith(basePrefix) && f.toLowerCase().endsWith(ext))
+      }
+      if (!matchedFile && reqName.startsWith('pdf.worker')) {
+        matchedFile = files.find(f => f.startsWith('pdf.worker') && f.endsWith('.mjs'))
+      }
+      if (matchedFile) {
+        if (matchedFile.endsWith('.mjs') || matchedFile.endsWith('.js')) {
+          res.setHeader('Content-Type', 'text/javascript; charset=utf-8')
+        } else if (matchedFile.endsWith('.css')) {
+          res.setHeader('Content-Type', 'text/css; charset=utf-8')
+        }
         res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate')
-        return res.sendFile(path.join(assetsDir, workerFile))
+        return res.sendFile(path.join(assetsDir, matchedFile))
+      }
+      if (extMatch) {
+        return res.status(404).type('text/plain').send('Asset not found')
       }
     }
   } catch (e) {}
-  res.status(404).end()
+  res.status(404).type('text/plain').send('Asset not found')
 })
 
 // Catch-all: send React app for any non-API route (React Router support)
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
   res.sendFile(path.join(__dirname, '../dist', 'index.html'))
 })
 

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { FileText, Download, CheckCircle2, Loader2, AlertTriangle, Bot, X, RefreshCw, Pencil, Plus, Trash2, Save, UploadCloud } from 'lucide-react'
 import toast from 'react-hot-toast'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { jsPDF as StaticJsPDF } from 'jspdf'
+import StaticJSZip from 'jszip'
 import { useMoodle } from '../hooks/useMoodle'
 import { useAppData } from '../context/AppDataContext'
 import {
@@ -12,8 +13,9 @@ import {
   synthesizeUniversalAcademicAnswer,
   cleanAcademicText
 } from '../utils/bobbySolverEngine'
+import { indexCourseMaterials } from '../utils/bobbyVectorIndex'
 
-// Polyfill ReadableStream[Symbol.asyncIterator] & Map.prototype.getOrInsertComputed for iOS Safari / WebKit (prevents "undefined is not a function (near '...e of t...')" in pdfjs-dist v6)
+// Polyfill ReadableStream[Symbol.asyncIterator] & Map.prototype.getOrInsertComputed for iOS Safari / WebKit
 if (typeof window !== 'undefined') {
   if (typeof ReadableStream !== 'undefined' && !ReadableStream.prototype[Symbol.asyncIterator]) {
     ReadableStream.prototype[Symbol.asyncIterator] = async function* () {
@@ -42,7 +44,11 @@ if (typeof window !== 'undefined') {
 
 const loadLegacyCdnPdfjs = async () => {
   if (typeof window === 'undefined') return null
-  if (window.pdfjsLib?.getDocument) return window.pdfjsLib
+  if (window.pdfjsLib?.getDocument) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+    return window.pdfjsLib
+  }
   const urls = [
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
@@ -69,44 +75,34 @@ const loadLegacyCdnPdfjs = async () => {
 }
 
 const defaultGetJSZip = async () => {
+  if (typeof StaticJSZip === 'function') return StaticJSZip
+  if (StaticJSZip?.default && typeof StaticJSZip.default === 'function') return StaticJSZip.default
   if (typeof window !== 'undefined' && typeof window.JSZip === 'function') return window.JSZip
-  const mod = await import('jszip')
-  let zip = mod.default || mod
-  if (typeof zip !== 'function' && zip?.JSZip && typeof zip.JSZip === 'function') zip = zip.JSZip
-  return typeof zip === 'function' ? zip : null
+  return null
 }
 
 const defaultGetPdfjs = async () => {
-  let pdfjs = typeof window !== 'undefined' ? window.pdfjsLib : null
-  if (!pdfjs) {
-    try {
-      const mod = await import('pdfjs-dist')
-      pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
-    } catch (_) {
-      pdfjs = await loadLegacyCdnPdfjs()
-    }
+  // Always prefer classic UMD pdf.js 3.11.174 with classic .js worker so iOS Safari / WebKit never throws "'text/html' is not a valid JavaScript MIME type" on .mjs module workers
+  const cdnLib = await loadLegacyCdnPdfjs()
+  if (cdnLib) return cdnLib
+
+  try {
+    const mod = await import('pdfjs-dist')
+    const pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
+    return pdfjs
+  } catch (_) {
+    return null
   }
-  if (typeof window !== 'undefined' && !window.pdfjsWorker) {
-    try {
-      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
-      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
-    } catch (_) {}
-  }
-  if (pdfjs && pdfjs.GlobalWorkerOptions && !pdfjs.GlobalWorkerOptions.workerSrc) {
-    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker || 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
-  }
-  return pdfjs
 }
 
 const defaultGetJsPDF = async () => {
+  if (typeof StaticJsPDF === 'function') return StaticJsPDF
+  if (StaticJsPDF?.jsPDF && typeof StaticJsPDF.jsPDF === 'function') return StaticJsPDF.jsPDF
   if (typeof window !== 'undefined') {
     if (typeof window.jspdf?.jsPDF === 'function') return window.jspdf.jsPDF
     if (typeof window.jsPDF === 'function') return window.jsPDF
   }
-  const mod = await import('jspdf')
-  let ctor = mod.jsPDF || mod.default?.jsPDF || mod.default
-  if (typeof ctor !== 'function' && ctor?.jsPDF && typeof ctor.jsPDF === 'function') ctor = ctor.jsPDF
-  return typeof ctor === 'function' ? ctor : null
+  return null
 }
 
 // Deterministic hash from student Roll Number + Name + variation counter so 100+ students get unique wording & PDF layouts
@@ -763,9 +759,22 @@ export default function BobbyAssistant({
     (rawUserRoll === 'A24CSE057' ? '202402626010056' : '')
   const defaultSem = semMatch ? semMatch[1] : '5'
   const defaultDiv = divMatch ? divMatch[1].toUpperCase() : 'A'
-  const defaultSubject = cleanAiAnswerText(
-    effectiveAssignment.coursename || effectiveAssignment.name || 'SUBJECT'
-  ).toUpperCase()
+
+  const cleanCourseSubjectTitle = (rawCourse = '', rawAssign = '') => {
+    const cleanedCourse = cleanAiAnswerText(rawCourse || '')
+      .replace(/^(?:(?:FY|SY|TY)?\s*(?:BCA|MCA|BBA|MBA|B\.?TECH|M\.?SC)[A-Z]*\s*[-:]?\s*)?(?:SEM(?:ESTER)?\s*[-:]?\s*\d+\s*[-:]?\s*)/i, '')
+      .replace(/\s*-\s*\d{4}\b/g, '')
+      .trim()
+    if (cleanedCourse && !/^SEM(?:ESTER)?\s*[-:]?\s*\d+$/i.test(cleanedCourse)) {
+      return cleanedCourse.toUpperCase()
+    }
+    const cleanedAssign = cleanAiAnswerText(rawAssign || '')
+      .replace(/^(?:SEM(?:ESTER)?\s*[-:]?\s*\d+\s*[-:]?\s*)/i, '')
+      .trim()
+    return (cleanedAssign || cleanedCourse || 'COMPUTER SCIENCE').toUpperCase()
+  }
+
+  const defaultSubject = cleanCourseSubjectTitle(effectiveAssignment.coursename, effectiveAssignment.name)
 
   const storagePrefix = `bobby_student_${rawUserRoll.toLowerCase()}_`
 
@@ -790,9 +799,7 @@ export default function BobbyAssistant({
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
 
   useEffect(() => {
-    const nextSubj = cleanAiAnswerText(
-      effectiveAssignment.coursename || effectiveAssignment.name || 'SUBJECT'
-    ).toUpperCase()
+    const nextSubj = cleanCourseSubjectTitle(effectiveAssignment.coursename, effectiveAssignment.name)
     if (nextSubj && nextSubj !== 'SUBJECT') {
       setSubjectName(nextSubj)
     }
@@ -855,6 +862,9 @@ export default function BobbyAssistant({
       }
 
       const introPlain = stripHtml(effectiveAssignment.intro || '')
+      if (introPlain && introPlain.length > 60) {
+        indexCourseMaterials(effectiveAssignment.coursename || effectiveAssignment.courseshort || '', introPlain.split(/\n{2,}/))
+      }
       const combinedText = [extractedText, introPlain].filter(Boolean).join('\n\n')
 
       setStepText('Parsing questions & solving assignment...')
