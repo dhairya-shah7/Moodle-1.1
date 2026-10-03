@@ -253,7 +253,7 @@ function cleanAiAnswerText(str = '') {
     .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
     .replace(/```/g, '')
     .replace(/\*\*/g, '')
-    .replace(/^#{1,4}\s+/gm, '')
+    .replace(/^#{2,6}\s+/gm, '')
     .trim()
 }
 
@@ -391,23 +391,41 @@ function sanitizeForPdfFont(str = '') {
     .replace(/ {3,}/g, '  ')
 }
 
-// Dynamic Question-Specific Resolver for any unseen topic
-async function solveWithFactualEncyclopedia(questions, courseName, assignmentName, onProgress, existingMap = {}, localMatches = []) {
+// Dynamic Question-Specific Resolver (Pollinations AI + Encyclopedia Fallback) with parallel batching
+async function solveWithFactualEncyclopedia(questions, courseName, assignmentName, onProgress, existingMap = {}, localMatches = [], studentSeed = 42) {
   const ansMap = { ...existingMap }
+  const pendingIndices = []
 
   for (let idx = 0; idx < questions.length; idx++) {
-    if (localMatches[idx] || ansMap[idx + 1]) continue
+    if (!localMatches[idx] && !ansMap[idx + 1]) {
+      pendingIndices.push(idx)
+    }
+  }
+
+  const CONCURRENCY = 4
+  for (let i = 0; i < pendingIndices.length; i += CONCURRENCY) {
+    const batch = pendingIndices.slice(i, i + CONCURRENCY)
     if (onProgress) {
-      onProgress(`Solving Question ${idx + 1} of ${questions.length}...`)
+      const firstQ = batch[0] + 1
+      const lastQ = batch[batch.length - 1] + 1
+      onProgress(
+        batch.length === 1
+          ? `Solving Question ${firstQ} of ${questions.length} with AI...`
+          : `Solving Questions ${firstQ}-${lastQ} of ${questions.length} with AI...`
+      )
     }
-    try {
-      const dynamicAnswer = await fetchDynamicAiAnswer(questions[idx], courseName, assignmentName)
-      if (dynamicAnswer) {
-        ansMap[idx + 1] = cleanAiAnswerText(dynamicAnswer)
-      }
-    } catch (err) {
-      console.warn(`Dynamic resolver Q${idx + 1} error:`, err)
-    }
+    await Promise.all(
+      batch.map(async idx => {
+        try {
+          const dynamicAnswer = await fetchDynamicAiAnswer(questions[idx], courseName, assignmentName, studentSeed + idx)
+          if (dynamicAnswer) {
+            ansMap[idx + 1] = cleanAiAnswerText(dynamicAnswer)
+          }
+        } catch (err) {
+          console.warn(`Dynamic resolver Q${idx + 1} error:`, err)
+        }
+      })
+    )
   }
 
   return ansMap
@@ -914,14 +932,15 @@ export default function BobbyAssistant({
         setStepText(`Resolving subject-specific answers...`)
         let factualMap = {}
 
-        // Only query the encyclopedia resolver for questions that were NOT solved deterministically
+        // Query Pollinations AI + encyclopedia resolver for questions that were not matched locally
         const directMap = await solveWithFactualEncyclopedia(
           questions,
           effectiveCourseContext,
           effectiveAssignment.name || '',
           msg => setStepText(msg),
           factualMap,
-          localMatches
+          localMatches,
+          seed
         )
         Object.entries(directMap).forEach(([k, v]) => {
           const num = Number(k)

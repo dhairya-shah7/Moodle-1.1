@@ -60,7 +60,7 @@ export function isSubmissionInstruction(text = '') {
   )
 }
 
-// Detect standalone topic/section headers (e.g. "Arrays", "Stack", "DIVPL Assignment practical question", "241601106 Publishing Multimedia Tools Practicals", "Module 1")
+// Detect standalone topic/section headers (e.g. "Arrays", "Lists", "Tuples", "Dictionaries", "DIVPL Assignment practical question", "241601106 Publishing Multimedia Tools Practicals", "Module 1")
 export function isStandaloneSectionHeader(line = '') {
   const t = String(line || '').trim()
   if (!t) return true
@@ -72,7 +72,7 @@ export function isStandaloneSectionHeader(line = '') {
     return true
   }
   if (
-    /^(?:arrays?|stacks?|queues?|linked\s+lists?|singly\s+linked\s+lists?|doubly\s+linked\s+lists?|binary\s+trees?|binary\s+search\s+trees?(?:\s*\(bst\))?|avl\s+trees?|graphs?|hashing|heaps?|searching\s+and\s+sorting|sorting\s+and\s+searching|trees?\s+and\s+graphs?|dynamic\s+programming|greedy\s+algorithms?|recursion|strings?|matrices|pointers?|structures?|file\s+handling|exception\s+handling|multithreading|unit\s*[-:]?\s*\d+|module\s*[-:]?\s*\d+|section\s*[-:]?\s*[a-z0-9]+|part\s*[-:]?\s*[a-z0-9]+|practice\s+questions|data\s+structures\s+practice\s+questions)$/i.test(
+    /^(?:lists?|tuples?|dictionaries|dictionary|sets?|arrays?|stacks?|queues?|linked\s+lists?|singly\s+linked\s+lists?|doubly\s+linked\s+lists?|binary\s+trees?|binary\s+search\s+trees?(?:\s*\(bst\))?|avl\s+trees?|graphs?|hashing|heaps?|searching\s+and\s+sorting|sorting\s+and\s+searching|trees?\s+and\s+graphs?|dynamic\s+programming|greedy\s+algorithms?|recursion|strings?|matrices|pointers?|structures?|functions?|modules?|packages?|comprehensions?|list\s+comprehensions?|control\s+statements?|conditional\s+statements?|loops?|classes\s+and\s+objects?|object\s+oriented\s+programming|oop|file\s+handling|exception\s+handling|multithreading|sr\.?\s*no\.?|s\.?\s*no\.?|unit\s*[-:]?\s*\d+|module\s*[-:]?\s*\d+|section\s*[-:]?\s*[a-z0-9]+|part\s*[-:]?\s*[a-z0-9]+|practice\s+questions|data\s+structures\s+practice\s+questions)$/i.test(
       t
     )
   ) {
@@ -80,7 +80,7 @@ export function isStandaloneSectionHeader(line = '') {
   }
   // Filter standalone document/sheet titles like "DIVPL Assignment practical question", "Publishing Multimedia Tools Practicals", "Lab Manual", etc.
   if (
-    !/^(?:Question\s*\d+|Q\s*\.?\s*\d+|\d+\s*[.)]|[1-9]\d?\s+(?:Use|Write|Explain|Define|Create|Design|Implement|Print|Display|Accept|Calculate|Convert|Check|Find|Generate|Draw|Solve|Perform|Apply)|[a-h]\s*[.)]|\([a-h]\)|\((?:i|ii|iii|iv|v|vi)\))/i.test(t) &&
+    !/^(?:Question\s*\d+|Q\s*\.?\s*\d+|\d+\s*[.)]|[1-9]\d?\s+(?:Use|Write|Explain|Define|Create|Design|Implement|Print|Display|Accept|Calculate|Convert|Check|Find|Generate|Draw|Solve|Perform|Apply|Update|Concatenate|Demonstrate|Sort|Count|Store|Insert|Pass|Take)|[a-h]\s*[.)]|\([a-h]\)|\((?:i|ii|iii|iv|v|vi)\))/i.test(t) &&
     !t.includes('?') &&
     t.length < 95 &&
     /\b(?:assignment\s+practical\s+questions?|practical\s+questions?|practical\s+assignment|practicals?$|assignment\s*[-:]?\s*\d*$|lab\s+manual|lab\s+exercise|question\s+bank|tutorial\s+sheet|gls\s+university|faculty\s+of\s+computer)\b/i.test(
@@ -95,7 +95,7 @@ export function isStandaloneSectionHeader(line = '') {
   return false
 }
 
-// Universal Question Parser: supports 1..100+ questions (both "1. Question" and dotless "1 Use Inkscape..."), ignores document/course titles before Question 1, and preserves sub-parts (a, b, c, d, e) and bullet points
+// Universal Question Parser: supports 1..100+ questions (including "1. Question", dotless "1 Use Inkscape...", and standalone number lines "3\nUpdate list elements..."), ignores document/course titles before Question 1, and preserves sub-parts (a, b, c, d, e) and bullet points
 export function parseQuestions(rawText, assignmentName = '', courseName = '') {
   let cleaned = cleanAcademicText(rawText || '')
     .replace(/\r\n/g, '\n')
@@ -135,9 +135,9 @@ export function parseQuestions(rawText, assignmentName = '', courseName = '') {
     '\n'
   )
 
-  // Also split inline dotless numbered questions like "1 Use Inkscape ... 2 Use Inkscape ... 3 Use Inkscape ..."
+  // Also split inline dotless numbered questions like "1 Use Inkscape ... 2 Use Inkscape ... 3 Update list ..."
   cleaned = cleaned.replace(
-    /(?:^|\n|\s+)(?=[1-9]\d{0,1}\s+(?:Use|Write|Explain|Define|Describe|Discuss|Differentiate|Compare|Distinguish|State|List|Give|Find|Calculate|Compute|Solve|Perform|Apply|Implement|Create|Design|Draw|Generate|Display|Print|Accept|Convert|Check|Read|Reverse|Capitalize|Format|Align)\b)/g,
+    /(?:^|\n|\s+)(?=[1-9]\d{0,1}\s+(?:Use|Write|Explain|Define|Describe|Discuss|Differentiate|Compare|Distinguish|State|List|Give|Find|Calculate|Compute|Solve|Perform|Apply|Implement|Create|Design|Draw|Generate|Display|Print|Accept|Convert|Check|Read|Reverse|Capitalize|Format|Align|Update|Concatenate|Demonstrate|Sort|Count|Store|Insert|Modify|Delete|Remove|Pass|Take|Ask|Access|Search|Merge|Filter|Extract)\b)/g,
     '\n'
   )
 
@@ -147,7 +147,24 @@ export function parseQuestions(rawText, assignmentName = '', courseName = '') {
     '\n'
   )
 
-  const lines = cleaned.split('\n').map(l => l.trim()).filter(Boolean)
+  // Pre-filter standalone section headers ("Lists", "Tuples", "Dictionaries", etc.) and merge standalone question number lines ("3\nUpdate list elements...") with the following question line
+  const rawLines = cleaned
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !isSubmissionInstruction(l) && !isStandaloneSectionHeader(l))
+
+  const lines = []
+  for (let i = 0; i < rawLines.length; i++) {
+    const cur = rawLines[i]
+    const next = rawLines[i + 1] || ''
+    if (/^[1-9]\d{0,2}$/.test(cur) && /^[A-Z][a-zA-Z0-9\s,()'"_-]{3,}/.test(next) && !/^[1-9]\d{0,2}\b/.test(next)) {
+      lines.push(`${cur}. ${next}`)
+      i++ // skip next since it was merged with its question number
+    } else {
+      lines.push(cur)
+    }
+  }
+
   const questions = []
   let currentQ = ''
   let currentNum = null
@@ -2428,10 +2445,32 @@ function solveCodingOrDsaQuestion(qText, index, courseName = '', assignmentName 
     ].join('\n')
   }
 
-  // Matrix operations (Addition / Multiplication / Transpose)
-  if (qLower.includes('matrix') && (qLower.includes('multip') || qLower.includes('add') || qLower.includes('transpose'))) {
+  // Matrix Transpose and Sum of Diagonal Elements
+  if ((qLower.includes('matrix') || qLower.includes('matrices')) && qLower.includes('transpose') && qLower.includes('diagonal')) {
     return [
-      `# Program to perform Matrix Addition, Multiplication, and Transpose`,
+      `# Python Program: Find the Transpose of a Matrix and Sum of its Diagonal Elements`,
+      `matrix = [`,
+      `    [1, 2, 3],`,
+      `    [4, 5, 6],`,
+      `    [7, 8, 9]`,
+      `]`,
+      `transpose = [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]`,
+      `diagonal_sum = sum(matrix[i][i] for i in range(len(matrix)))`,
+      `print("Original Matrix  :", matrix)`,
+      `print("Transpose Matrix :", transpose)`,
+      `print("Sum of Diagonal Elements :", diagonal_sum)`,
+      ``,
+      `Sample Output:`,
+      `Original Matrix  : [[1, 2, 3], [4, 5, 6], [7, 8, 9]]`,
+      `Transpose Matrix : [[1, 4, 7], [2, 5, 8], [3, 6, 9]]`,
+      `Sum of Diagonal Elements : 15`
+    ].join('\n')
+  }
+
+  // Matrix operations (Addition / Multiplication / Transpose)
+  if ((qLower.includes('matrix') || qLower.includes('matrices')) && (qLower.includes('multip') || qLower.includes('add') || qLower.includes('transpose'))) {
+    return [
+      `# Python Program: Read Two Matrices as Nested Lists and Perform Addition and Multiplication`,
       `def add_matrices(A, B):`,
       `    return [[A[i][j] + B[i][j] for j in range(len(A[0]))] for i in range(len(A))]`,
       ``,
@@ -2444,13 +2483,17 @@ function solveCodingOrDsaQuestion(qText, index, courseName = '', assignmentName 
       `if __name__ == "__main__":`,
       `    A = [[1, 2], [3, 4]]`,
       `    B = [[5, 6], [7, 8]]`,
-      `    print("Addition       :", add_matrices(A, B))`,
-      `    print("Multiplication :", multiply_matrices(A, B))`,
+      `    print("Matrix A       :", A)`,
+      `    print("Matrix B       :", B)`,
+      `    print("Addition (A+B) :", add_matrices(A, B))`,
+      `    print("Product (AxB)  :", multiply_matrices(A, B))`,
       `    print("Transpose of A :", transpose_matrix(A))`,
       ``,
       `Sample Output:`,
-      `Addition       : [[6, 8], [10, 12]]`,
-      `Multiplication : [[19, 22], [43, 50]]`,
+      `Matrix A       : [[1, 2], [3, 4]]`,
+      `Matrix B       : [[5, 6], [7, 8]]`,
+      `Addition (A+B) : [[6, 8], [10, 12]]`,
+      `Product (AxB)  : [[19, 22], [43, 50]]`,
       `Transpose of A : [[1, 3], [2, 4]]`
     ].join('\n')
   }
@@ -2576,7 +2619,7 @@ function solveCodingOrDsaQuestion(qText, index, courseName = '', assignmentName 
   }
 
   // String Vowels, Consonants, Reverse, Anagram
-  if (qLower.includes('vowel') || qLower.includes('consonant')) {
+  if ((qLower.includes('vowel') || qLower.includes('consonant')) && !qLower.includes('comprehension') && !qLower.includes('squares')) {
     return [
       `# Program to count Vowels, Consonants, Digits, and Spaces in a String`,
       `def analyze_string(text):`,
@@ -3609,7 +3652,7 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
   }
 
   // Q25: Display the first element of a list
-  if (qLower.includes('first element') && qLower.includes('list')) {
+  if (qLower.includes('first element') && qLower.includes('list') && !qLower.includes('slice') && !qLower.includes('slicing') && !qLower.includes('update')) {
     return fmtPy(
       'Display the First Element of a List',
       [
@@ -3625,7 +3668,7 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
   }
 
   // Q26: Display the last element of a list
-  if (qLower.includes('last element') && qLower.includes('list')) {
+  if (qLower.includes('last element') && qLower.includes('list') && !qLower.includes('update') && !qLower.includes('slice') && !qLower.includes('slicing') && !qLower.includes('changing')) {
     return fmtPy(
       'Display the Last Element of a List',
       [
@@ -3661,7 +3704,7 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
   }
 
   // Q28: Display the first element of a tuple
-  if (qLower.includes('first element') && qLower.includes('tuple')) {
+  if (qLower.includes('first element') && qLower.includes('tuple') && !qLower.includes('slice') && !qLower.includes('slicing')) {
     return fmtPy(
       'Display the First Element of a Tuple',
       [
@@ -4391,7 +4434,7 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
     )
   }
 
-  if (qLower.includes('vowel') || qLower.includes('consonant')) {
+  if ((qLower.includes('vowel') || qLower.includes('consonant')) && !qLower.includes('comprehension') && !qLower.includes('squares')) {
     return fmtPy(
       'Count Vowels and Consonants in a String',
       [
@@ -4531,76 +4574,624 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
     )
   }
 
-  // 8. Compositional AST English-to-Code Compiler & Virtual Execution Tracer:
-  // Parses clauses of any unseen coding specification and compiles working Python code + verified console output.
-  const taskTitle = qClean.replace(/^(?:q(?:uestion)?\s*\d+\s*[:.)-]?\s*)/i, '').replace(/\.$/, '').trim()
-  const clauses = taskTitle
-    .split(/\b(?:and\s+then|and\s+also|then|\band\b|;|,)\b/i)
-    .map(c => c.trim())
-    .filter(c => c.length >= 3)
+  // ══════════════════════════════════════════════════════════════════════════
+  // 8. PYTHON LISTS, TUPLES & DICTIONARIES LABORATORY SUITE (Q1 – Q25)
+  // ══════════════════════════════════════════════════════════════════════════
 
-  const astCode = [`# Python Program: ${taskTitle}`]
-  const astOut = []
-
-  if (/\blist\b/i.test(taskTitle)) {
-    const sampleList = [12, 25, 8, 40, 19, 34]
-    astCode.push(`numbers = [12, 25, 8, 40, 19, 34]`)
-    astCode.push(`print(f"Input List     : {numbers}")`)
-    astOut.push(`Input List     : [12, 25, 8, 40, 19, 34]`)
-    if (/even/i.test(taskTitle)) {
-      const evens = sampleList.filter(x => x % 2 === 0)
-      astCode.push(`even_nums = [x for x in numbers if x % 2 == 0]`)
-      astCode.push(`print(f"Even Elements  : {even_nums}")`)
-      astOut.push(`Even Elements  : [${evens.join(', ')}]`)
-    }
-    if (/odd/i.test(taskTitle)) {
-      const odds = sampleList.filter(x => x % 2 !== 0)
-      astCode.push(`odd_nums = [x for x in numbers if x % 2 != 0]`)
-      astCode.push(`print(f"Odd Elements   : {odd_nums}")`)
-      astOut.push(`Odd Elements   : [${odds.join(', ')}]`)
-    }
-    if (/sum|total|average/i.test(taskTitle) || astOut.length === 1) {
-      astCode.push(`print(f"Sum = {sum(numbers)}, Average = {sum(numbers)/len(numbers):.2f}, Max = {max(numbers)}, Min = {min(numbers)}")`)
-      astOut.push(`Sum = 138, Average = 23.00, Max = 40, Min = 8`)
-    }
-    return [...astCode, ``, `Sample Output:`, ...astOut].join('\n')
+  // L1: Create a list, access elements using indexing and slicing
+  if (qLower.includes('list') && qLower.includes('indexing') && qLower.includes('slicing') && !qLower.includes('tuple')) {
+    return fmtPy(
+      'Create a List and Access Elements Using Indexing and Slicing',
+      [
+        `numbers = [10, 20, 30, 40, 50, 60, 70]`,
+        `print(f"Original List          : {numbers}")`,
+        `print(f"First Element (nums[0]): {numbers[0]}")`,
+        `print(f"Last Element (nums[-1]): {numbers[-1]}")`,
+        `print(f"Slice nums[1:5]        : {numbers[1:5]}")`,
+        `print(f"Slice with Step [::2]  : {numbers[::2]}")`,
+        `print(f"Reversed Slice [::-1]  : {numbers[::-1]}")`
+      ],
+      [
+        `Original List          : [10, 20, 30, 40, 50, 60, 70]`,
+        `First Element (nums[0]): 10`,
+        `Last Element (nums[-1]): 70`,
+        `Slice nums[1:5]        : [20, 30, 40, 50]`,
+        `Slice with Step [::2]  : [10, 30, 50, 70]`,
+        `Reversed Slice [::-1]  : [70, 60, 50, 40, 30, 20, 10]`
+      ]
+    )
   }
 
-  if (/\bstring\b|\bcharacter|\bword/i.test(taskTitle)) {
-    astCode.push(`text = "Python Programming"`)
-    astCode.push(`print(f"Input String   : '{text}'")`)
-    astOut.push(`Input String   : 'Python Programming'`)
-    astCode.push(`words = text.split()`)
-    astCode.push(`freq = {ch: text.count(ch) for ch in dict.fromkeys(text.replace(" ", ""))}`)
-    astCode.push(`print(f"Word Count     : {len(words)} | Length: {len(text)}")`)
-    astCode.push(`print(f"Char Frequency : {freq}")`)
-    astOut.push(`Word Count     : 2 | Length: 18`)
-    astOut.push(`Char Frequency : {'P': 2, 'y': 1, 't': 1, 'h': 1, 'o': 2, 'n': 2, 'r': 2, 'g': 2, 'a': 1, 'm': 2, 'i': 1}`)
-    return [...astCode, ``, `Sample Output:`, ...astOut].join('\n')
+  // L2: Create a list of the first N even numbers using the range() function
+  if (qLower.includes('even') && qLower.includes('range')) {
+    return fmtPy(
+      'Create a List of the First N Even Numbers Using range()',
+      [
+        `n = 8`,
+        `even_numbers = list(range(2, 2 * n + 1, 2))`,
+        `print(f"Value of N            : {n}")`,
+        `print(f"First {n} Even Numbers : {even_numbers}")`
+      ],
+      [
+        `Value of N            : 8`,
+        `First 8 Even Numbers : [2, 4, 6, 8, 10, 12, 14, 16]`
+      ]
+    )
   }
 
-  // Default Compositional Clause-by-Clause AST Synthesis
-  return fmtPy(
-    taskTitle,
-    [
-      `def execute_task():`,
-      `    task_name = ${JSON.stringify(taskTitle)}`,
-      `    records = {"Student": "Dhairya Shah", "Course": "Python Programming", "Score": 95}`,
-      `    print(f"Task Specification : {task_name}")`,
-      ...clauses.slice(0, 4).map((cl, idx) => `    print(f"Step ${idx + 1} (${cl.replace(/"/g, "'")}) : Completed")`),
-      `    for key, val in records.items():`,
-      `        print(f"{key:<18} : {val}")`,
-      ``,
-      `execute_task()`
-    ],
-    [
-      `Task Specification : ${taskTitle}`,
-      ...clauses.slice(0, 4).map((cl, idx) => `Step ${idx + 1} (${cl.replace(/"/g, "'")}) : Completed`),
-      `Student            : Dhairya Shah`,
-      `Course             : Python Programming`,
-      `Score              : 95`
-    ]
-  )
+  // L3: Update list elements by changing a value at an index, a slice of values, and the last element
+  if (qLower.includes('update') && qLower.includes('list') && (qLower.includes('slice') || qLower.includes('index'))) {
+    return fmtPy(
+      'Update List Elements by Index, Slice, and Last Element',
+      [
+        `items = [10, 20, 30, 40, 50, 60]`,
+        `print(f"Original List                 : {items}")`,
+        `items[1] = 25`,
+        `print(f"After Updating Index 1        : {items}")`,
+        `items[2:4] = [35, 45]`,
+        `print(f"After Updating Slice [2:4]    : {items}")`,
+        `items[-1] = 99`,
+        `print(f"After Updating Last Element   : {items}")`
+      ],
+      [
+        `Original List                 : [10, 20, 30, 40, 50, 60]`,
+        `After Updating Index 1        : [10, 25, 30, 40, 50, 60]`,
+        `After Updating Slice [2:4]    : [10, 25, 35, 45, 50, 60]`,
+        `After Updating Last Element   : [10, 25, 35, 45, 50, 99]`
+      ]
+    )
+  }
+
+  // L4: Concatenate two lists and repeat a list n times. Check membership using in and not in
+  if (qLower.includes('concatenate') && qLower.includes('list') && (qLower.includes('repeat') || qLower.includes('membership'))) {
+    return fmtPy(
+      'List Concatenation, Repetition, and Membership Testing (in / not in)',
+      [
+        `list_a = [1, 2, 3]`,
+        `list_b = [4, 5, 6]`,
+        `concatenated = list_a + list_b`,
+        `repeated = list_a * 3`,
+        `print(f"List A                    : {list_a}")`,
+        `print(f"List B                    : {list_b}")`,
+        `print(f"Concatenated (A + B)      : {concatenated}")`,
+        `print(f"Repeated (A * 3)          : {repeated}")`,
+        `print(f"Is 3 in Concatenated?     : {3 in concatenated}")`,
+        `print(f"Is 9 not in Concatenated? : {9 not in concatenated}")`
+      ],
+      [
+        `List A                    : [1, 2, 3]`,
+        `List B                    : [4, 5, 6]`,
+        `Concatenated (A + B)      : [1, 2, 3, 4, 5, 6]`,
+        `Repeated (A * 3)          : [1, 2, 3, 1, 2, 3, 1, 2, 3]`,
+        `Is 3 in Concatenated?     : True`,
+        `Is 9 not in Concatenated? : True`
+      ]
+    )
+  }
+
+  // L5: Demonstrate aliasing and cloning of lists and show how a change affects the original list in each case
+  if (qLower.includes('aliasing') || (qLower.includes('cloning') && qLower.includes('list'))) {
+    return fmtPy(
+      'Demonstrate Aliasing and Cloning of Lists',
+      [
+        `original = [10, 20, 30, 40]`,
+        `alias_list = original          # Aliasing (shares same reference)`,
+        `cloned_list = original[:]      # Cloning (independent copy)`,
+        ``,
+        `alias_list[0] = 99`,
+        `print(f"After modifying alias_list[0] = 99:")`,
+        `print(f"  Original List : {original}  (Modified!)")`,
+        `print(f"  Alias List    : {alias_list}")`,
+        ``,
+        `cloned_list[1] = 777`,
+        `print(f"After modifying cloned_list[1] = 777:")`,
+        `print(f"  Original List : {original}  (Unchanged!)")`,
+        `print(f"  Cloned List   : {cloned_list}")`
+      ],
+      [
+        `After modifying alias_list[0] = 99:`,
+        `  Original List : [99, 20, 30, 40]  (Modified!)`,
+        `  Alias List    : [99, 20, 30, 40]`,
+        `After modifying cloned_list[1] = 777:`,
+        `  Original List : [99, 20, 30, 40]  (Unchanged!)`,
+        `  Cloned List   : [99, 777, 30, 40]`
+      ]
+    )
+  }
+
+  // L6: Demonstrate list methods: append(), extend(), insert(), remove(), pop(), index(), reverse(), clear()
+  if (qLower.includes('list') && qLower.includes('append') && qLower.includes('extend')) {
+    return fmtPy(
+      'Demonstrate Built-In List Methods',
+      [
+        `nums = [10, 20, 30]`,
+        `print(f"Initial List          : {nums}")`,
+        `nums.append(40)`,
+        `print(f"After append(40)      : {nums}")`,
+        `nums.extend([50, 60])`,
+        `print(f"After extend([50,60]) : {nums}")`,
+        `nums.insert(1, 15)`,
+        `print(f"After insert(1, 15)   : {nums}")`,
+        `nums.remove(30)`,
+        `print(f"After remove(30)      : {nums}")`,
+        `popped = nums.pop()`,
+        `print(f"After pop() -> {popped}     : {nums}")`,
+        `print(f"Index of 40           : {nums.index(40)}")`,
+        `nums.reverse()`,
+        `print(f"After reverse()       : {nums}")`,
+        `nums.clear()`,
+        `print(f"After clear()         : {nums}")`
+      ],
+      [
+        `Initial List          : [10, 20, 30]`,
+        `After append(40)      : [10, 20, 30, 40]`,
+        `After extend([50,60]) : [10, 20, 30, 40, 50, 60]`,
+        `After insert(1, 15)   : [10, 15, 20, 30, 40, 50, 60]`,
+        `After remove(30)      : [10, 15, 20, 40, 50, 60]`,
+        `After pop() -> 60     : [10, 15, 20, 40, 50]`,
+        `Index of 40           : 3`,
+        `After reverse()       : [50, 40, 20, 15, 10]`,
+        `After clear()         : []`
+      ]
+    )
+  }
+
+  // L7: Find the largest and smallest elements in a list, with and without built-in functions
+  if (qLower.includes('largest') && qLower.includes('smallest') && qLower.includes('list')) {
+    return fmtPy(
+      'Find Largest and Smallest Elements in a List (With and Without Built-In Functions)',
+      [
+        `numbers = [42, 15, 89, 7, 63, 28]`,
+        `print(f"Input List               : {numbers}")`,
+        ``,
+        `# 1. Using Built-In Functions max() and min()`,
+        `print(f"Built-In  -> Largest: {max(numbers)}, Smallest: {min(numbers)}")`,
+        ``,
+        `# 2. Without Built-In Functions (Using Loop)`,
+        `largest = smallest = numbers[0]`,
+        `for n in numbers[1:]:`,
+        `    if n > largest:`,
+        `        largest = n`,
+        `    if n < smallest:`,
+        `        smallest = n`,
+        `print(f"Loop-Based -> Largest: {largest}, Smallest: {smallest}")`
+      ],
+      [
+        `Input List               : [42, 15, 89, 7, 63, 28]`,
+        `Built-In  -> Largest: 89, Smallest: 7`,
+        `Loop-Based -> Largest: 89, Smallest: 7`
+      ]
+    )
+  }
+
+  // L8: Sort a list in ascending and descending order using sort() and sorted()
+  if (qLower.includes('sort') && qLower.includes('list') && (qLower.includes('ascending') || qLower.includes('sorted'))) {
+    return fmtPy(
+      'Sort a List in Ascending and Descending Order Using sort() and sorted()',
+      [
+        `numbers = [45, 12, 89, 33, 7, 61]`,
+        `print(f"Original List                    : {numbers}")`,
+        ``,
+        `# Using sorted() (returns a new sorted list without modifying original)`,
+        `print(f"sorted() Ascending               : {sorted(numbers)}")`,
+        `print(f"sorted() Descending              : {sorted(numbers, reverse=True)}")`,
+        ``,
+        `# Using list.sort() (sorts the list in-place)`,
+        `numbers.sort()`,
+        `print(f"In-place sort() Ascending        : {numbers}")`,
+        `numbers.sort(reverse=True)`,
+        `print(f"In-place sort(reverse=True) Desc : {numbers}")`
+      ],
+      [
+        `Original List                    : [45, 12, 89, 33, 7, 61]`,
+        `sorted() Ascending               : [7, 12, 33, 45, 61, 89]`,
+        `sorted() Descending              : [89, 61, 45, 33, 12, 7]`,
+        `In-place sort() Ascending        : [7, 12, 33, 45, 61, 89]`,
+        `In-place sort(reverse=True) Desc : [89, 61, 45, 33, 12, 7]`
+      ]
+    )
+  }
+
+  // L9: Count the occurrences of each element in a list
+  if ((qLower.includes('count') || qLower.includes('frequency') || qLower.includes('occurrence')) && qLower.includes('list')) {
+    return fmtPy(
+      'Count the Occurrences of Each Element in a List',
+      [
+        `items = [10, 20, 10, 30, 20, 10, 40, 30]`,
+        `occurrences = {}`,
+        `for item in items:`,
+        `    occurrences[item] = occurrences.get(item, 0) + 1`,
+        `print(f"Input List          : {items}")`,
+        `print("Element Occurrences :")`,
+        `for elem, count in occurrences.items():`,
+        `    print(f"  Element {elem} occurs {count} time(s)")`
+      ],
+      [
+        `Input List          : [10, 20, 10, 30, 20, 10, 40, 30]`,
+        `Element Occurrences :`,
+        `  Element 10 occurs 3 time(s)`,
+        `  Element 20 occurs 2 time(s)`,
+        `  Element 30 occurs 2 time(s)`,
+        `  Element 40 occurs 1 time(s)`
+      ]
+    )
+  }
+
+  // L10: Find the common elements in two lists
+  if (qLower.includes('common') && qLower.includes('list')) {
+    return fmtPy(
+      'Find the Common Elements in Two Lists',
+      [
+        `list1 = [10, 20, 30, 40, 50]`,
+        `list2 = [30, 40, 50, 60, 70]`,
+        `common_elements = [x for x in list1 if x in list2]`,
+        `print(f"List 1          : {list1}")`,
+        `print(f"List 2          : {list2}")`,
+        `print(f"Common Elements : {common_elements}")`
+      ],
+      [
+        `List 1          : [10, 20, 30, 40, 50]`,
+        `List 2          : [30, 40, 50, 60, 70]`,
+        `Common Elements : [30, 40, 50]`
+      ]
+    )
+  }
+
+  // L11: Store different data types in a list and display each element with its type
+  if (qLower.includes('different data types') && qLower.includes('list')) {
+    return fmtPy(
+      'Store Different Data Types in a List and Display Each Element with Its Type',
+      [
+        `mixed_list = [42, 3.14, "Python", True, (1, 2), [5, 6], {"id": 101}]`,
+        `print(f"Mixed List : {mixed_list}\\n")`,
+        `for item in mixed_list:`,
+        `    print(f"Element: {str(item):<14} -> Data Type: {type(item).__name__} ({type(item)})")`
+      ],
+      [
+        `Mixed List : [42, 3.14, 'Python', True, (1, 2), [5, 6], {'id': 101}]`,
+        ``,
+        `Element: 42             -> Data Type: int (<class 'int'>)`,
+        `Element: 3.14           -> Data Type: float (<class 'float'>)`,
+        `Element: Python         -> Data Type: str (<class 'str'>)`,
+        `Element: True           -> Data Type: bool (<class 'bool'>)`,
+        `Element: (1, 2)         -> Data Type: tuple (<class 'tuple'>)`,
+        `Element: [5, 6]         -> Data Type: list (<class 'list'>)`,
+        `Element: {'id': 101}    -> Data Type: dict (<class 'dict'>)`
+      ]
+    )
+  }
+
+  // L12: Create a nested list and access its elements using indexing and loops
+  if (qLower.includes('nested list') && (qLower.includes('access') || qLower.includes('loop') || qLower.includes('index'))) {
+    return fmtPy(
+      'Create a Nested List and Access Its Elements Using Indexing and Loops',
+      [
+        `nested_list = [[10, 20, 30], [40, 50, 60], [70, 80, 90]]`,
+        `print(f"Nested List                    : {nested_list}")`,
+        `print(f"Element at [0][1]              : {nested_list[0][1]}")`,
+        `print(f"Element at [2][2]              : {nested_list[2][2]}")`,
+        `print("\\nAccessing All Elements Using Nested Loops:")`,
+        `for r_idx, row in enumerate(nested_list):`,
+        `    for c_idx, val in enumerate(row):`,
+        `        print(f"  nested_list[{r_idx}][{c_idx}] = {val}")`
+      ],
+      [
+        `Nested List                    : [[10, 20, 30], [40, 50, 60], [70, 80, 90]]`,
+        `Element at [0][1]              : 20`,
+        `Element at [2][2]              : 90`,
+        ``,
+        `Accessing All Elements Using Nested Loops:`,
+        `  nested_list[0][0] = 10`,
+        `  nested_list[0][1] = 20`,
+        `  nested_list[0][2] = 30`,
+        `  nested_list[1][0] = 40`,
+        `  nested_list[1][1] = 50`,
+        `  nested_list[1][2] = 60`,
+        `  nested_list[2][0] = 70`,
+        `  nested_list[2][1] = 80`,
+        `  nested_list[2][2] = 90`
+      ]
+    )
+  }
+
+  // L15: Use list comprehensions to generate squares, filter even numbers and extract vowels from a string
+  if (qLower.includes('list comprehension') || (qLower.includes('squares') && qLower.includes('even') && qLower.includes('vowel'))) {
+    return fmtPy(
+      'Use List Comprehensions for Squares, Filtering Even Numbers, and Extracting Vowels',
+      [
+        `numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`,
+        `text = "Python Programming Laboratory"`,
+        ``,
+        `squares = [x ** 2 for x in range(1, 8)]`,
+        `even_nums = [x for x in numbers if x % 2 == 0]`,
+        `vowels = [ch for ch in text if ch.lower() in "aeiou"]`,
+        ``,
+        `print(f"Squares (1 to 7)      : {squares}")`,
+        `print(f"Filtered Even Numbers : {even_nums}")`,
+        `print(f"Extracted Vowels      : {vowels}")`
+      ],
+      [
+        `Squares (1 to 7)      : [1, 4, 9, 16, 25, 36, 49]`,
+        `Filtered Even Numbers : [2, 4, 6, 8, 10]`,
+        `Extracted Vowels      : ['o', 'o', 'a', 'i', 'a', 'o', 'a', 'o']`
+      ]
+    )
+  }
+
+  // L16: Create a tuple, access elements using indexing and slicing, and perform concatenation, repetition and membership operations
+  if (qLower.includes('tuple') && (qLower.includes('slicing') || qLower.includes('concatenation') || qLower.includes('repetition'))) {
+    return fmtPy(
+      'Tuple Indexing, Slicing, Concatenation, Repetition, and Membership',
+      [
+        `t1 = (10, 20, 30, 40, 50)`,
+        `t2 = (60, 70)`,
+        `print(f"Tuple t1              : {t1}")`,
+        `print(f"First & Last Element  : {t1[0]}, {t1[-1]}")`,
+        `print(f"Slice t1[1:4]         : {t1[1:4]}")`,
+        `print(f"Concatenation (t1+t2) : {t1 + t2}")`,
+        `print(f"Repetition (t2 * 3)   : {t2 * 3}")`,
+        `print(f"Membership (30 in t1) : {30 in t1}")`,
+        `print(f"Not In (99 not in t1) : {99 not in t1}")`
+      ],
+      [
+        `Tuple t1              : (10, 20, 30, 40, 50)`,
+        `First & Last Element  : 10, 50`,
+        `Slice t1[1:4]         : (20, 30, 40)`,
+        `Concatenation (t1+t2) : (10, 20, 30, 40, 50, 60, 70)`,
+        `Repetition (t2 * 3)   : (60, 70, 60, 70, 60, 70)`,
+        `Membership (30 in t1) : True`,
+        `Not In (99 not in t1) : True`
+      ]
+    )
+  }
+
+  // L17: Demonstrate tuple functions: len(), max(), min(), sum(), sorted(), count(), index()
+  if (qLower.includes('tuple') && (qLower.includes('max()') || qLower.includes('count()') || qLower.includes('tuple functions'))) {
+    return fmtPy(
+      'Demonstrate Tuple Functions: len(), max(), min(), sum(), sorted(), count(), index()',
+      [
+        `t = (25, 10, 40, 10, 55, 30, 10)`,
+        `print(f"Tuple t         : {t}")`,
+        `print(f"len(t)          : {len(t)}")`,
+        `print(f"max(t)          : {max(t)}")`,
+        `print(f"min(t)          : {min(t)}")`,
+        `print(f"sum(t)          : {sum(t)}")`,
+        `print(f"sorted(t)       : {sorted(t)}")`,
+        `print(f"t.count(10)     : {t.count(10)}")`,
+        `print(f"t.index(40)     : {t.index(40)}")`
+      ],
+      [
+        `Tuple t         : (25, 10, 40, 10, 55, 30, 10)`,
+        `len(t)          : 7`,
+        `max(t)          : 55`,
+        `min(t)          : 10`,
+        `sum(t)          : 180`,
+        `sorted(t)       : [10, 10, 10, 25, 30, 40, 55]`,
+        `t.count(10)     : 3`,
+        `t.index(40)     : 2`
+      ]
+    )
+  }
+
+  // L18: Create a nested tuple and display its elements using loops
+  if (qLower.includes('nested tuple')) {
+    return fmtPy(
+      'Create a Nested Tuple and Display Its Elements Using Loops',
+      [
+        `students = (`,
+        `    (101, "Dhairya", 94),`,
+        `    (102, "Aarav", 89),`,
+        `    (103, "Diya", 96)`,
+        `)`,
+        `print(f"Nested Tuple : {students}\\n")`,
+        `print("Displaying Nested Tuple Elements:")`,
+        `for roll, name, marks in students:`,
+        `    print(f"  Roll No: {roll} | Name: {name:<10} | Marks: {marks}")`
+      ],
+      [
+        `Nested Tuple : ((101, 'Dhairya', 94), (102, 'Aarav', 89), (103, 'Diya', 96))`,
+        ``,
+        `Displaying Nested Tuple Elements:`,
+        `  Roll No: 101 | Name: Dhairya    | Marks: 94`,
+        `  Roll No: 102 | Name: Aarav      | Marks: 89`,
+        `  Roll No: 103 | Name: Diya       | Marks: 96`
+      ]
+    )
+  }
+
+  // L19: Insert, modify and delete elements in a tuple by converting it to a list and back
+  if (qLower.includes('tuple') && qLower.includes('list') && (qLower.includes('insert') || qLower.includes('modify') || qLower.includes('converting'))) {
+    return fmtPy(
+      'Insert, Modify, and Delete Elements in a Tuple via List Conversion',
+      [
+        `tup = (10, 20, 30, 40)`,
+        `print(f"Original Tuple          : {tup}")`,
+        ``,
+        `temp_list = list(tup)`,
+        `temp_list.insert(1, 15)    # Insert 15 at index 1`,
+        `temp_list[3] = 35          # Modify element at index 3`,
+        `temp_list.remove(40)       # Delete element 40`,
+        ``,
+        `tup = tuple(temp_list)`,
+        `print(f"Modified Tuple          : {tup}")`
+      ],
+      [
+        `Original Tuple          : (10, 20, 30, 40)`,
+        `Modified Tuple          : (10, 15, 20, 35)`
+      ]
+    )
+  }
+
+  // L20: Create a dictionary and perform add, update, delete and search operations on keys
+  if (qLower.includes('dictionary') && qLower.includes('add') && qLower.includes('update') && qLower.includes('delete')) {
+    return fmtPy(
+      'Dictionary Add, Update, Delete, and Key Search Operations',
+      [
+        `student = {"id": 101, "name": "Dhairya", "course": "Python"}`,
+        `print(f"Initial Dictionary      : {student}")`,
+        ``,
+        `student["marks"] = 95              # Add new key-value pair`,
+        `print(f"After Adding 'marks'    : {student}")`,
+        ``,
+        `student["course"] = "B.Tech CSE"   # Update existing key`,
+        `print(f"After Updating 'course' : {student}")`,
+        ``,
+        `del student["id"]                  # Delete key`,
+        `print(f"After Deleting 'id'     : {student}")`,
+        ``,
+        `search_key = "name"`,
+        `print(f"Is '{search_key}' in dict?    : {search_key in student} (Value = {student.get(search_key)})")`
+      ],
+      [
+        `Initial Dictionary      : {'id': 101, 'name': 'Dhairya', 'course': 'Python'}`,
+        `After Adding 'marks'    : {'id': 101, 'name': 'Dhairya', 'course': 'Python', 'marks': 95}`,
+        `After Updating 'course' : {'id': 101, 'name': 'Dhairya', 'course': 'B.Tech CSE', 'marks': 95}`,
+        `After Deleting 'id'     : {'name': 'Dhairya', 'course': 'B.Tech CSE', 'marks': 95}`,
+        `Is 'name' in dict?    : True (Value = Dhairya)`
+      ]
+    )
+  }
+
+  // L21: Demonstrate dictionary methods: keys(), values(), items(), get(), update(), pop(), popitem(), clear()
+  if (qLower.includes('dictionary') && qLower.includes('keys()') && qLower.includes('values()')) {
+    return fmtPy(
+      'Demonstrate Dictionary Methods: keys(), values(), items(), get(), update(), pop(), popitem(), clear()',
+      [
+        `data = {"a": 10, "b": 20, "c": 30}`,
+        `print(f"Initial Dict            : {data}")`,
+        `print(f"keys()                  : {list(data.keys())}")`,
+        `print(f"values()                : {list(data.values())}")`,
+        `print(f"items()                 : {list(data.items())}")`,
+        `print(f"get('b')                : {data.get('b')}")`,
+        `data.update({"d": 40, "e": 50})`,
+        `print(f"After update()          : {data}")`,
+        `print(f"pop('a') -> {data.pop('a')}          : {data}")`,
+        `print(f"popitem() -> {data.popitem()}  : {data}")`,
+        `data.clear()`,
+        `print(f"After clear()           : {data}")`
+      ],
+      [
+        `Initial Dict            : {'a': 10, 'b': 20, 'c': 30}`,
+        `keys()                  : ['a', 'b', 'c']`,
+        `values()                : [10, 20, 30]`,
+        `items()                 : [('a', 10), ('b', 20), ('c', 30)]`,
+        `get('b')                : 20`,
+        `After update()          : {'a': 10, 'b': 20, 'c': 30, 'd': 40, 'e': 50}`,
+        `pop('a') -> 10          : {'b': 20, 'c': 30, 'd': 40, 'e': 50}`,
+        `popitem() -> ('e', 50)  : {'b': 20, 'c': 30, 'd': 40}`,
+        `After clear()           : {}`
+      ]
+    )
+  }
+
+  // L22: Display the keys, values and key-value pairs of a dictionary using a for loop
+  if (qLower.includes('dictionary') && qLower.includes('key') && qLower.includes('for') && qLower.includes('loop')) {
+    return fmtPy(
+      'Display Keys, Values, and Key-Value Pairs of a Dictionary Using a for Loop',
+      [
+        `marks = {"Python": 95, "Data Structures": 89, "DBMS": 92}`,
+        `print("1. Keys:")`,
+        `for k in marks:`,
+        `    print(f"   {k}")`,
+        `print("2. Values:")`,
+        `for v in marks.values():`,
+        `    print(f"   {v}")`,
+        `print("3. Key-Value Pairs:")`,
+        `for k, v in marks.items():`,
+        `    print(f"   {k} -> {v}")`
+      ],
+      [
+        `1. Keys:`,
+        `   Python`,
+        `   Data Structures`,
+        `   DBMS`,
+        `2. Values:`,
+        `   95`,
+        `   89`,
+        `   92`,
+        `3. Key-Value Pairs:`,
+        `   Python -> 95`,
+        `   Data Structures -> 89`,
+        `   DBMS -> 92`
+      ]
+    )
+  }
+
+  // L23: Sort the elements of a dictionary by key and by value using lambda functions
+  if (qLower.includes('sort') && qLower.includes('dictionary') && (qLower.includes('lambda') || qLower.includes('by key'))) {
+    return fmtPy(
+      'Sort Dictionary Elements by Key and by Value Using Lambda Functions',
+      [
+        `scores = {"Charlie": 82, "Alice": 95, "delta": 78, "Bob": 90}`,
+        `sorted_by_key = dict(sorted(scores.items(), key=lambda item: item[0].lower()))`,
+        `sorted_by_val = dict(sorted(scores.items(), key=lambda item: item[1]))`,
+        `print(f"Original Dictionary : {scores}")`,
+        `print(f"Sorted by Key       : {sorted_by_key}")`,
+        `print(f"Sorted by Value     : {sorted_by_val}")`
+      ],
+      [
+        `Original Dictionary : {'Charlie': 82, 'Alice': 95, 'delta': 78, 'Bob': 90}`,
+        `Sorted by Key       : {'Alice': 95, 'Bob': 90, 'Charlie': 82, 'delta': 78}`,
+        `Sorted by Value     : {'delta': 78, 'Charlie': 82, 'Bob': 90, 'Alice': 95}`
+      ]
+    )
+  }
+
+  // L24: Convert two lists into a dictionary, and a string (e.g. "a=1,b=2,c=3") into a dictionary
+  if (qLower.includes('two lists') && qLower.includes('dictionary') && (qLower.includes('string') || qLower.includes('a=1'))) {
+    return fmtPy(
+      'Convert Two Lists and a Key-Value String into Dictionaries',
+      [
+        `keys = ["name", "roll", "branch"]`,
+        `values = ["Dhairya", 57, "CSE"]`,
+        `dict_from_lists = dict(zip(keys, values))`,
+        `print(f"Dictionary from Two Lists : {dict_from_lists}")`,
+        ``,
+        `raw_str = "a=1,b=2,c=3"`,
+        `dict_from_str = {pair.split("=")[0]: int(pair.split("=")[1]) for pair in raw_str.split(",")}`,
+        `print(f"Dictionary from String    : {dict_from_str}")`
+      ],
+      [
+        `Dictionary from Two Lists : {'name': 'Dhairya', 'roll': 57, 'branch': 'CSE'}`,
+        `Dictionary from String    : {'a': 1, 'b': 2, 'c': 3}`
+      ]
+    )
+  }
+
+  // L25: Pass a dictionary to a function and modify it. Create an OrderedDict and demonstrate its operations
+  if (qLower.includes('ordereddict') || (qLower.includes('pass') && qLower.includes('dictionary') && qLower.includes('function'))) {
+    return fmtPy(
+      'Pass a Dictionary to a Function and Demonstrate OrderedDict Operations',
+      [
+        `from collections import OrderedDict`,
+        ``,
+        `def update_dictionary(d):`,
+        `    d["status"] = "Verified"`,
+        `    d["score"] += 5`,
+        `    return d`,
+        ``,
+        `student_dict = {"name": "Dhairya", "score": 90}`,
+        `print(f"Before Function Call : {student_dict}")`,
+        `update_dictionary(student_dict)`,
+        `print(f"After Function Call  : {student_dict}")`,
+        ``,
+        `od = OrderedDict([("first", 10), ("second", 20), ("third", 30)])`,
+        `od.move_to_end("first")`,
+        `print(f"OrderedDict after move_to_end('first') : {list(od.items())}")`,
+        `popped = od.popitem(last=False)`,
+        `print(f"OrderedDict after popitem(last=False)  : {list(od.items())} (Popped: {popped})")`
+      ],
+      [
+        `Before Function Call : {'name': 'Dhairya', 'score': 90}`,
+        `After Function Call  : {'name': 'Dhairya', 'score': 95, 'status': 'Verified'}`,
+        `OrderedDict after move_to_end('first') : [('second', 20), ('third', 30), ('first', 10)]`,
+        `OrderedDict after popitem(last=False)  : [('third', 30), ('first', 10)] (Popped: ('second', 20))`
+      ]
+    )
+  }
+
+  // Return null for any unmatched coding question so it routes directly to Pollinations AI (text.pollinations.ai)
+  return null
 }
 
 
@@ -6672,10 +7263,113 @@ export function isRelevantAcademicWikiHit(title = '', snippet = '') {
   return true
 }
 
-// 100% Model-Free Resolver: uses deterministic solvers + Moodle Course Vector Index + OpenAlex Scholarly API + StackExchange API + BM25 Category-Gated MediaWiki
-export async function fetchDynamicAiAnswer(qText, courseName = '', assignmentName = '') {
-  const localMatch = solveMathOrStatsQuestion(qText, 0, 0, courseName, assignmentName)
+// Clean Pollinations AI output: strip conversational preambles, markdown fences, and any sponsor footers
+export function cleanPollinationsOutput(raw = '') {
+  let text = String(raw || '').trim()
+  if (!text) return ''
+
+  // Strip any trailing Pollinations sponsor/footer block if present
+  text = text
+    .replace(/\n*---\s*\n*(?:\*\*Support Pollinations|\*Powered by Pollinations|🌸\s*\*\*Pollinations|Brought to you by Pollinations)[\s\S]*$/i, '')
+    .trim()
+
+  // Strip leading conversational filler lines ("Below is a...", "Here is the...", "(You can copy-paste...)") before Program: or code
+  text = text
+    .replace(/^(?:sure[!.,]*|certainly[!.,]*|here\s+is\b[^\n]*|below\s+is\b[^\n]*|\(you\s+can\s+copy[^\n]*\))\s*\n+/gim, '')
+    .replace(/^\(you\s+can\s+copy[^\n]*\)\s*\n+/gim, '')
+    .trim()
+
+  // Convert markdown code blocks into clean plain text while preserving indentation
+  text = text
+    .replace(/```[a-zA-Z0-9_+-]*\s*\n/g, '')
+    .replace(/```/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/^#{2,6}\s+/gm, '')
+    .replace(/[\u2011\u2012\u2013\u2014]/g, '-')
+    .trim()
+
+  return cleanAcademicText(text)
+}
+
+// Open-Source Pollinations AI Solver (https://text.pollinations.ai/) — Free, Zero-Key LLM Engine
+export async function fetchPollinationsAiAnswer(qText, courseName = '', assignmentName = '', studentSeed = 0) {
+  const qClean = cleanAcademicText(qText).trim()
+  if (!qClean) return null
+
+  const contextStr = `${qClean} ${courseName} ${assignmentName}`.toLowerCase()
+  const isCodingQuestion =
+    /\b(?:python|java|c\+\+|c#|javascript|typescript|php|sql|program|script|function|list|tuple|dictionary|dictionaries|set|array|matrix|matrices|string|loop|recursion|class|object|inheritance|exception|file\s+handling|ordereddict|lambda)\b/i.test(
+      contextStr
+    ) &&
+    !/\b(?:inkscape|gimp|photoshop|coreldraw|food\s+menu|birthday\s+card|visiting\s+card)\b/i.test(contextStr)
+
+  const systemPrompt = isCodingQuestion
+    ? [
+        `You are an expert university Computer Science professor solving a laboratory programming assignment for the course "${courseName || 'Python Programming'}".`,
+        `Strict Output Rules:`,
+        `1. Output NO conversational intro or outro (never say "Below is a script", "Sure", or "You can copy-paste").`,
+        `2. Start immediately with "Program:" on the first line, followed by complete, self-contained, runnable code that directly solves EVERY part of the question using concrete sample values.`,
+        `3. After the code, write "Output:" on its own line, followed by the exact console output produced when running that code.`,
+        `4. Do NOT wrap the code in markdown backticks (\`\`\`). Use plain ASCII characters only.`
+      ].join('\n')
+    : [
+        `You are an expert university professor solving an academic assignment for the course "${courseName || 'Computer Science'}" (${assignmentName || 'Assignment'}).`,
+        `Strict Output Rules:`,
+        `1. Output NO conversational intro or outro (never say "Here is the solution" or "Sure!").`,
+        `2. Provide a complete, well-structured, step-by-step university exam answer with numbered sections (1., 2., 3.).`,
+        `3. Use plain ASCII notation only (no LaTeX backslashes like \\frac or markdown code fences).`,
+        `4. Directly and accurately solve every requirement of the question.`
+      ].join('\n')
+
+  const payload = {
+    model: 'openai',
+    seed: Number(studentSeed || 42) % 100000,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Course: ${courseName || 'Computer Science'}\nQuestion: ${qClean}` }
+    ]
+  }
+
+  // Try direct Pollinations AI endpoint first, with backend proxy fallback
+  const endpoints = ['https://text.pollinations.ai/']
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    endpoints.push(`${window.location.origin}/proxy/bobby-ai`)
+  }
+
+  for (const url of endpoints) {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 18000)
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+      clearTimeout(timer)
+      if (res.ok) {
+        const rawText = await res.text()
+        const cleaned = cleanPollinationsOutput(rawText)
+        if (cleaned && cleaned.length > 40 && !/^(?:error|404|502|503|rate\s+limit)/i.test(cleaned)) {
+          return cleaned
+        }
+      }
+    } catch {
+      // Try next endpoint or fallback
+    }
+  }
+
+  return null
+}
+
+// Hybrid Solver: Verified Deterministic Solvers + Open-Source Pollinations AI + Course Vector / MediaWiki / OpenAlex Fallback
+export async function fetchDynamicAiAnswer(qText, courseName = '', assignmentName = '', studentSeed = 0) {
+  const localMatch = solveMathOrStatsQuestion(qText, 0, studentSeed, courseName, assignmentName)
   if (localMatch) return localMatch
+
+  const pollinationsAnswer = await fetchPollinationsAiAnswer(qText, courseName, assignmentName, studentSeed)
+  if (pollinationsAnswer) return pollinationsAnswer
+
   return await fetchWikipediaFactualAnswer(qText, courseName, assignmentName)
 }
 

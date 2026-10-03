@@ -1439,6 +1439,30 @@ app.delete('/proxy/storage/:fileId', async (req, res) => {
   }
 })
 
+// ── POST Pollinations AI Proxy (Open-Source Text AI for Bobby Assignment Solver)
+app.post('/proxy/bobby-ai', async (req, res) => {
+  try {
+    const payload = req.body || {}
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20000)
+    const upstream = await fetch('https://text.pollinations.ai/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    })
+    clearTimeout(timer)
+    if (!upstream.ok) {
+      return res.status(upstream.status).send('Upstream AI error')
+    }
+    const text = await upstream.text()
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.send(text)
+  } catch (e) {
+    res.status(502).json({ error: 'Pollinations AI proxy error' })
+  }
+})
+
 // ── Catch unknown proxy routes
 app.all('/proxy/*', (req, res) => {
   res.status(404).json({ error: 'Unknown endpoint' })
