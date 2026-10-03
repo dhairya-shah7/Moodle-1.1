@@ -747,11 +747,27 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
         .replace(/&quot;/gi, '"')
         .replace(/&#0?39;/gi, "'")
         .replace(/&nbsp;/gi, ' ')
+        .replace(/[\uE000-\uF8FF]/g, '- ')
+        .replace(/ð·||\uF0B7|\uF0A7|\u2022|\u25CF|\u25AA|\u25E6/g, '- ')
+        .replace(/(?:^|\n)\s*-\s*-\s*/g, '\n- ')
+        .replace(/^={2,6}\s*([^=\n]+?)\s*={2,6}\s*$/gm, '$1:')
         .replace(/```[a-zA-Z0-9_-]*\n?/g, '')
         .replace(/```/g, '')
         .replace(/\*\*/g, '')
         .replace(/^#{1,4}\s+/gm, '')
         .trim()
+    }
+
+    const isRelevantWikiTitle = (title = '') => {
+      const t = String(title || '').trim()
+      if (!t) return false
+      if (/^(?:list\s+of|lists\s+of|glossary\s+of|index\s+of|outline\s+of|timeline\s+of|category:|portal:|template:|wikipedia:)/i.test(t)) {
+        return false
+      }
+      if (/\b(?:disambiguation|united\s+states|united\s+kingdom|culture\s+of|history\s+of\s+the|economy\s+of|politics\s+of|demographics\s+of|playstation|xbox|nintendo|filmography|discography|album|television\s+series|football|cricket)\b/i.test(t)) {
+        return false
+      }
+      return true
     }
 
     const extractTopics = (qText = '') => {
@@ -769,18 +785,19 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
           ''
         )
         .split(/[.?]/)[0]
-        .replace(/\b(?:with\s+(?:a\s+)?(?:suitable\s+)?example.*|in\s+detail.*|and\s+how\s+it.*|and\s+its\s+advantages.*|and\s+functions\s+of.*)$/i, '')
+        .replace(/\b(?:with\s+(?:a\s+)?(?:suitable\s+)?(?:neat\s+)?(?:example|diagram).*|in\s+detail.*|and\s+provide\s+an\s+example.*|and\s+discuss\s+its\s+methods.*|and\s+how\s+it.*|and\s+its\s+advantages.*|and\s+functions\s+of.*)$/i, '')
         .trim()
       return [stripped || cleanText(qText).slice(0, 80)]
     }
 
     const deriveSubjectDomain = (cName = '', aName = '') => {
       const raw = cleanText(`${cName} ${aName}`)
-        .replace(/\b(?:sem(?:ester)?\s*[-:]?\s*\d+|div(?:ision)?\s*[-:]?\s*[a-z]|module\s*[-:]?\s*[\d-]+|unit\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|task\s*[-:]?\s*\d+|b\.?tech|bca|mca|m\.?sc|fcait|\d{4,})\b/gi, ' ')
+        .replace(/\b(?:sem(?:ester)?\s*[-:]?\s*\d+|div(?:ision)?\s*[-:]?\s*[a-z]|module\s*[-:]?\s*[\d-]+|unit\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|laboratory|lab\b|task\s*[-:]?\s*\d+|b\.?tech|bca|mca|m\.?sc|fcait|\d{4,})\b/gi, ' ')
         .replace(/[()[\]_-]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-      if (/divpl|image\s+and\s+video|image\s+processing|computer\s+vision/i.test(raw)) return 'Digital image processing OpenCV'
+      if (/divpl|image\s+and\s+video|image\s+processing|computer\s+vision/i.test(raw)) return 'Digital image processing'
+      if (/python/i.test(raw)) return 'Python programming'
       if (/compiler\s+design|automata|toc\b/i.test(raw)) return 'Compiler construction Formal language'
       if (/data\s+structures|dsa\b|algorithm/i.test(raw)) return 'Data structure Algorithm'
       if (/probability|statistics/i.test(raw)) return 'Probability and statistics'
@@ -793,30 +810,38 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
 
     const solveQuestionDynamically = async (qText) => {
       const cleanCourse = cleanText(courseName || assignmentName || 'Computer Science')
+        .replace(/\s*-\s*\d{4}\b/g, '')
+        .trim()
       const subjectDomain = deriveSubjectDomain(courseName, assignmentName)
       const topics = extractTopics(qText)
       const sections = []
+      const seenTitles = new Set()
       const wikiHeaders = {
         'User-Agent': 'GLSUniversityMoodlePortal/1.1 (Academic Research Resolver)'
       }
 
-      for (const topic of topics.slice(0, 4)) {
+      for (const topic of topics.slice(0, 3)) {
         try {
-          const scopedQuery = `${topic} ${subjectDomain}`.trim()
-          let searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(scopedQuery)}&utf8=&format=json&srlimit=2`
+          const cleanTopic = topic.replace(/\b\d{4}\b/g, '').trim()
+          if (!cleanTopic) continue
+          const scopedQuery = `${cleanTopic} ${subjectDomain}`.trim()
+          let searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(scopedQuery)}&utf8=&format=json&srlimit=5`
           let sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
           let sData = sRes.ok ? await sRes.json() : null
-          let bestHit = sData?.query?.search?.[0]
+          let hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title))
+          let bestHit = hits[0]
 
           if (!bestHit?.title) {
-            searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(topic)}&utf8=&format=json&srlimit=2`
+            searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanTopic)}&utf8=&format=json&srlimit=5`
             sRes = await fetch(searchUrl, { headers: wikiHeaders, timeout: 6000 })
             sData = sRes.ok ? await sRes.json() : null
-            bestHit = sData?.query?.search?.[0]
+            hits = (sData?.query?.search || []).filter(h => isRelevantWikiTitle(h.title))
+            bestHit = hits[0]
           }
-          if (!bestHit?.title) continue
+          if (!bestHit?.title || seenTitles.has(bestHit.title.toLowerCase())) continue
+          seenTitles.add(bestHit.title.toLowerCase())
 
-          const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exchars=2200&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json`
+          const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exchars=1800&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json`
           const exRes = await fetch(extractUrl, { headers: wikiHeaders, timeout: 6000 })
           if (exRes.ok) {
             const exData = await exRes.json()

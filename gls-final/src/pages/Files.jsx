@@ -91,44 +91,56 @@ function FileCard({ f, onSendToBobby }) {
         <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', flex: 1 }}>
           {f.filename}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-            {fmtSize(f.filesize) && <span>{fmtSize(f.filesize)}</span>}
-            {fmtSize(f.filesize) && fmtDate(f.timemodified) && <span>·</span>}
-            {fmtDate(f.timemodified) && <span>{fmtDate(f.timemodified)}</span>}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            {canSendToBobby && (
-              <button
-                type="button"
-                onClick={handleBobbyClick}
-                style={{
-                  flexShrink: 0,
-                  padding: '4px 8px',
-                  background: 'var(--accent-soft)',
-                  border: '1px solid var(--accent)',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: 'var(--accent)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  cursor: 'pointer'
-                }}
-                title="Send this file to Bobby Assistant"
-              >
-                <Bot size={12} /> Bobby
-              </button>
-            )}
-            <div 
-              onClick={handleActionClick}
-              className="row-hover"
-              style={{ flexShrink: 0, padding: '4px 10px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontWeight: 600, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 4 }}
+        <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {fmtSize(f.filesize) && <span>{fmtSize(f.filesize)}</span>}
+          {fmtSize(f.filesize) && fmtDate(f.timemodified) && <span>·</span>}
+          {fmtDate(f.timemodified) && <span>{fmtDate(f.timemodified)}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
+          {canSendToBobby && (
+            <button
+              type="button"
+              onClick={handleBobbyClick}
+              style={{
+                flex: 1,
+                padding: '6px 8px',
+                background: 'var(--accent-soft)',
+                border: '1px solid var(--accent)',
+                borderRadius: 7,
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                cursor: 'pointer'
+              }}
+              title="Send this file to Bobby Assistant"
             >
-              {isLink ? <ExternalLink size={12} /> : <Download size={12} />}
-              {isLink ? 'Open' : 'Save'}
-            </div>
+              <Bot size={12} /> Bobby
+            </button>
+          )}
+          <div 
+            onClick={handleActionClick}
+            className="row-hover"
+            style={{
+              flex: 1,
+              padding: '6px 10px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 7,
+              fontSize: 11,
+              fontWeight: 600,
+              color: 'var(--text2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4
+            }}
+          >
+            {isLink ? <ExternalLink size={12} /> : <Download size={12} />}
+            {isLink ? 'Open' : 'Save'}
           </div>
         </div>
       </div>

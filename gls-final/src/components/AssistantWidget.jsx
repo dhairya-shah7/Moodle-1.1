@@ -170,48 +170,50 @@ export default function AssistantWidget() {
         onChange={handleQuickUpload}
       />
 
-      {/* Floating Action Button */}
-      <button
-        onClick={() => setIsOpen(prev => !prev)}
-        style={{
-          position: 'fixed',
-          bottom: 74,
-          right: 20,
-          zIndex: 9999,
-          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '50%',
-          width: 52,
-          height: 52,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 8px 24px rgba(245, 158, 11, 0.45)',
-          cursor: 'pointer',
-          transition: 'transform 0.2s ease, boxShadow 0.2s ease'
-        }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1.0)'}
-        title="Bobby — Moodle & Assignment Assistant"
-      >
-        {isOpen ? <X size={24} /> : <Bot size={26} />}
-      </button>
+      {/* Floating Action Button (hidden when drawer is open so it never overlaps the drawer corner) */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: 74,
+            right: 20,
+            zIndex: 9999,
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '50%',
+            width: 52,
+            height: 52,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(245, 158, 11, 0.45)',
+            cursor: 'pointer',
+            transition: 'transform 0.2s ease, boxShadow 0.2s ease'
+          }}
+          onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+          onMouseLeave={e => e.currentTarget.style.transform = 'scale(1.0)'}
+          title="Bobby — Moodle & Assignment Assistant"
+        >
+          <Bot size={26} />
+        </button>
+      )}
 
       {/* Expandable Bobby Drawer */}
       {isOpen && (
         <div style={{
           position: 'fixed',
-          bottom: 80,
-          right: 20,
-          width: 'calc(100vw - 32px)',
-          maxWidth: activeTab === 'solver' ? 560 : 400,
-          height: activeTab === 'solver' ? 'min(680px, calc(100vh - 96px))' : 'min(500px, calc(100vh - 100px))',
-          maxHeight: 'calc(100vh - 96px)',
+          bottom: 74,
+          right: 14,
+          width: 'calc(100vw - 28px)',
+          maxWidth: activeTab === 'solver' ? 540 : 400,
+          height: activeTab === 'solver' ? 'min(610px, calc(100dvh - 140px))' : 'min(480px, calc(100dvh - 140px))',
+          maxHeight: 'calc(100dvh - 140px)',
           background: 'var(--surface)',
           border: '1px solid var(--border)',
-          borderRadius: 22,
-          boxShadow: '0 20px 44px rgba(0,0,0,0.35)',
+          borderRadius: 20,
+          boxShadow: '0 20px 44px rgba(0,0,0,0.38)',
           backdropFilter: 'blur(16px)',
           zIndex: 9999,
           display: 'flex',
@@ -222,19 +224,20 @@ export default function AssistantWidget() {
         }}>
           {/* Header */}
           <div style={{
-            padding: '12px 16px',
+            padding: '10px 14px',
             background: 'var(--surface2)',
             borderBottom: '1px solid var(--border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: 8
+            gap: 8,
+            flexShrink: 0
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, flex: 1 }}>
               <div style={{
-                width: 34,
-                height: 34,
-                borderRadius: 10,
+                width: 32,
+                height: 32,
+                borderRadius: 9,
                 background: 'rgba(245, 158, 11, 0.15)',
                 color: '#f59e0b',
                 display: 'flex',
@@ -242,20 +245,20 @@ export default function AssistantWidget() {
                 justifyContent: 'center',
                 flexShrink: 0
               }}>
-                <Bot size={19} />
+                <Bot size={18} />
               </div>
-              <div>
-                <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--text)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)', lineHeight: 1.2 }}>
                   Bobby
                 </div>
-                <div style={{ fontSize: 10.5, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
-                  Bobby Assistant • Moodle & Assignment Solver
+                <div style={{ fontSize: 10, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
+                  Bobby Assistant • Moodle & Solver
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={() => quickUploadRef.current?.click()}
@@ -264,17 +267,18 @@ export default function AssistantWidget() {
                   border: '1px solid var(--accent-bd)',
                   color: 'var(--accent)',
                   cursor: 'pointer',
-                  padding: '5px 9px',
+                  padding: '5px 8px',
                   borderRadius: 8,
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: 700,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 4
+                  gap: 4,
+                  whiteSpace: 'nowrap'
                 }}
                 title="Upload PDF or Word (.docx) assignment to Bobby"
               >
-                <Upload size={12} /> Upload PDF/Word
+                <Upload size={11} /> Upload PDF/Word
               </button>
 
               {activeTab === 'chat' && (

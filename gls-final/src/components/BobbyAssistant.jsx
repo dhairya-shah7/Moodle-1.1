@@ -13,6 +13,61 @@ import {
   cleanAcademicText
 } from '../utils/bobbySolverEngine'
 
+// Polyfill ReadableStream[Symbol.asyncIterator] & Map.prototype.getOrInsertComputed for iOS Safari / WebKit (prevents "undefined is not a function (near '...e of t...')" in pdfjs-dist v6)
+if (typeof window !== 'undefined') {
+  if (typeof ReadableStream !== 'undefined' && !ReadableStream.prototype[Symbol.asyncIterator]) {
+    ReadableStream.prototype[Symbol.asyncIterator] = async function* () {
+      const reader = this.getReader()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) return
+          yield value
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    }
+  }
+  if (typeof Map !== 'undefined' && !Map.prototype.getOrInsertComputed) {
+    // eslint-disable-next-line no-extend-native
+    Map.prototype.getOrInsertComputed = function (key, callbackFn) {
+      if (this.has(key)) return this.get(key)
+      const val = callbackFn(key)
+      this.set(key, val)
+      return val
+    }
+  }
+}
+
+const loadLegacyCdnPdfjs = async () => {
+  if (typeof window === 'undefined') return null
+  if (window.pdfjsLib?.getDocument) return window.pdfjsLib
+  const urls = [
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js'
+  ]
+  for (let u = 0; u < urls.length; u++) {
+    const url = urls[u]
+    try {
+      await new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${url}"]`)) return resolve()
+        const s = document.createElement('script')
+        s.src = url
+        s.onload = () => resolve()
+        s.onerror = () => reject(new Error(`Failed to load ${url}`))
+        document.head.appendChild(s)
+      })
+      if (window.pdfjsLib?.getDocument) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+        return window.pdfjsLib
+      }
+    } catch (_) {}
+  }
+  return null
+}
+
 const defaultGetJSZip = async () => {
   if (typeof window !== 'undefined' && typeof window.JSZip === 'function') return window.JSZip
   const mod = await import('jszip')
@@ -24,8 +79,12 @@ const defaultGetJSZip = async () => {
 const defaultGetPdfjs = async () => {
   let pdfjs = typeof window !== 'undefined' ? window.pdfjsLib : null
   if (!pdfjs) {
-    const mod = await import('pdfjs-dist')
-    pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
+    try {
+      const mod = await import('pdfjs-dist')
+      pdfjs = mod.default?.getDocument ? mod.default : (mod.getDocument ? mod : (mod.default || mod))
+    } catch (_) {
+      pdfjs = await loadLegacyCdnPdfjs()
+    }
   }
   if (typeof window !== 'undefined' && !window.pdfjsWorker) {
     try {
@@ -74,78 +133,67 @@ function stripHtml(html = '') {
   return (tmp.textContent || tmp.innerText || '').trim()
 }
 
-// Coordinate-aware PDF text + page-image extractor: preserves line breaks AND renders page images for scanned tables/charts
+// Coordinate-aware PDF text + page-image extractor with mobile Safari fallback to CDN pdf.js 3.11.174
 async function extractPdfData(blob, getPdfjs) {
-  const pdfjsLib = await getPdfjs()
-  if (!pdfjsLib) throw new Error('PDF reader library could not be loaded.')
-  if (typeof window !== 'undefined' && !window.pdfjsWorker) {
-    try {
-      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
-      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
-    } catch (workerErr) {
-      console.warn('Could not load pdf.worker.min.mjs:', workerErr)
-    }
-  }
   const arrayBuffer = await fileOrBlobToArrayBuffer(blob)
-  let pdf
-  try {
-    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
-  } catch (err) {
-    if (typeof window !== 'undefined' && !window.pdfjsWorker) {
-      const workerMod = await import('pdfjs-dist/build/pdf.worker.min.mjs')
-      window.pdfjsWorker = workerMod?.WorkerMessageHandler ? workerMod : (workerMod?.default || workerMod)
-    }
-    pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) }).promise
-  }
 
-  let fullText = ''
-  const pageImages = []
-  const maxVisionPages = Math.min(pdf.numPages, 6)
+  const parseWithLibrary = async (lib) => {
+    const docTask = lib.getDocument({
+      data: new Uint8Array(arrayBuffer.slice(0)),
+      disableStream: true,
+      disableAutoFetch: true
+    })
+    const pdf = await docTask.promise
+    let fullText = ''
+    const pageImages = []
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i)
-    const content = await page.getTextContent()
-    let lastY = null
-    let pageLines = []
-    let currentLine = ''
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      const items = Array.isArray(content?.items) ? content.items : Array.from(content?.items || [])
+      let lastY = null
+      const pageLines = []
+      let currentLine = ''
 
-    for (const item of content.items) {
-      const str = item.str || ''
-      const y = Array.isArray(item.transform) ? item.transform[5] : null
-      if (lastY !== null && y !== null && Math.abs(y - lastY) > 4) {
-        if (currentLine.trim()) pageLines.push(currentLine.trim())
-        currentLine = str
-      } else {
-        currentLine += (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ') ? ' ' : '') + str
-      }
-      if (y !== null) lastY = y
-      if (item.hasEOL) {
-        if (currentLine.trim()) pageLines.push(currentLine.trim())
-        currentLine = ''
-        lastY = null
-      }
-    }
-    if (currentLine.trim()) pageLines.push(currentLine.trim())
-    fullText += pageLines.join('\n') + '\n\n'
-
-    // Render page to canvas JPEG so scanned tables, charts, matrices & equations can be read by Vision AI
-    if (i <= maxVisionPages && typeof document !== 'undefined') {
-      try {
-        const viewport = page.getViewport({ scale: 1.2 })
-        const canvas = document.createElement('canvas')
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          await page.render({ canvasContext: ctx, viewport }).promise
-          pageImages.push(canvas.toDataURL('image/jpeg', 0.62))
+      for (let k = 0; k < items.length; k++) {
+        const item = items[k] || {}
+        const str = item.str || ''
+        const y = Array.isArray(item.transform) ? item.transform[5] : null
+        if (lastY !== null && y !== null && Math.abs(y - lastY) > 4) {
+          if (currentLine.trim()) pageLines.push(currentLine.trim())
+          currentLine = str
+        } else {
+          currentLine += (currentLine && !currentLine.endsWith(' ') && !str.startsWith(' ') ? ' ' : '') + str
         }
-      } catch (_) {
-        // Ignore canvas render errors and continue with text
+        if (y !== null) lastY = y
+        if (item.hasEOL) {
+          if (currentLine.trim()) pageLines.push(currentLine.trim())
+          currentLine = ''
+          lastY = null
+        }
       }
+      if (currentLine.trim()) pageLines.push(currentLine.trim())
+      fullText += pageLines.join('\n') + '\n\n'
     }
+    return { text: fullText.trim(), pageImages }
   }
-  return { text: fullText.trim(), pageImages }
+
+  let pdfjsLib = await getPdfjs()
+  if (!pdfjsLib) {
+    pdfjsLib = await loadLegacyCdnPdfjs()
+  }
+  if (!pdfjsLib) throw new Error('PDF reader library could not be loaded.')
+
+  try {
+    return await parseWithLibrary(pdfjsLib)
+  } catch (firstErr) {
+    console.warn('Primary PDF reader failed on this device, switching to mobile-compatible pdf.js 3.11 fallback:', firstErr)
+    const legacyLib = await loadLegacyCdnPdfjs()
+    if (legacyLib) {
+      return await parseWithLibrary(legacyLib)
+    }
+    throw firstErr
+  }
 }
 
 async function fileOrBlobToArrayBuffer(blob) {
@@ -182,7 +230,7 @@ async function extractDocxText(blob, getJSZip) {
 
 
 
-// Clean HTML entities, LaTeX math, and markdown formatting from AI answers and Moodle titles
+// Clean HTML entities, PUA bullets, LaTeX math, and markdown formatting from answers and Moodle titles
 function cleanAiAnswerText(str = '') {
   return String(str)
     .replace(/&amp;/gi, '&')
@@ -191,6 +239,10 @@ function cleanAiAnswerText(str = '') {
     .replace(/&quot;/gi, '"')
     .replace(/&#0?39;/gi, "'")
     .replace(/&nbsp;/gi, ' ')
+    .replace(/[\uE000-\uF8FF]/g, '- ')
+    .replace(/ð·||â€¢|Â·/g, '- ')
+    .replace(/[•▪▫●○‣⁃▸▹➢]/g, '- ')
+    .replace(/^={2,}\s*(.+?)\s*={2,}$/gm, '$1:')
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)')
     .replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)')
     .replace(/\\pm\b/g, '+-')
@@ -275,41 +327,74 @@ const PDF_THEMES = [
   }
 ]
 
-// Sanitize HTML entities, markdown markers, LaTeX, and Unicode math/punctuation into clean ASCII for standard jsPDF fonts
+// Sanitize HTML entities, PUA bullets, LaTeX, and Unicode math/punctuation into strict printable ASCII so jsPDF never triggers UCS-2 wide character spacing
 function sanitizeForPdfFont(str = '') {
   return cleanAiAnswerText(str)
     .replace(/`/g, '')
+    .replace(/[\uE000-\uF8FF]/g, '- ')
+    .replace(/ð·||â€¢|Â·/g, '- ')
+    .replace(/[•▪▫●○‣⁃▸▹➢]/g, '- ')
     .replace(/×/g, 'x')
     .replace(/÷/g, '/')
     .replace(/⇒/g, '=>')
-    .replace(/→/g, '->')
+    .replace(/→|⟶|➔|➜/g, '->')
+    .replace(/←|⟵/g, '<-')
+    .replace(/↔|⟷/g, '<->')
     .replace(/≥/g, '>=')
     .replace(/≤/g, '<=')
     .replace(/≠/g, '!=')
     .replace(/≈/g, '~=')
+    .replace(/±/g, '+-')
     .replace(/√/g, 'sqrt')
-    .replace(/Σ/g, 'Sum')
+    .replace(/Σ|∑/g, 'Sum')
+    .replace(/∏/g, 'Prod')
     .replace(/σ/g, 'sigma')
+    .replace(/μ|µ/g, 'mu')
+    .replace(/λ/g, 'lambda')
+    .replace(/π/g, 'pi')
+    .replace(/α/g, 'alpha')
+    .replace(/β/g, 'beta')
+    .replace(/γ/g, 'gamma')
+    .replace(/θ/g, 'theta')
+    .replace(/Δ|∆/g, 'Delta')
+    .replace(/∈/g, 'in')
+    .replace(/∉/g, 'not in')
+    .replace(/∪/g, 'U')
+    .replace(/∩/g, 'intersect')
+    .replace(/⊆/g, 'subset=')
+    .replace(/⊂/g, 'subset')
+    .replace(/∅/g, 'empty')
+    .replace(/∞/g, 'infinity')
     .replace(/x̄/g, 'Mean(x)')
     .replace(/₀/g, '0')
     .replace(/₁/g, '1')
     .replace(/₂/g, '2')
     .replace(/₃/g, '3')
+    .replace(/₄/g, '4')
+    .replace(/₅/g, '5')
+    .replace(/₆/g, '6')
+    .replace(/₇/g, '7')
+    .replace(/₈/g, '8')
+    .replace(/₉/g, '9')
     .replace(/ₙ/g, 'n')
     .replace(/²/g, '^2')
     .replace(/³/g, '^3')
+    .replace(/⁴/g, '^4')
     .replace(/⁵/g, '^5')
-    .replace(/•/g, '-')
     .replace(/▷/g, '|>')
     .replace(/◇/g, '<>')
     .replace(/◆/g, '<#>')
-    .replace(/─/g, '-')
+    .replace(/[─━═]/g, '-')
+    .replace(/[│┃║]/g, '|')
+    .replace(/[┌┐└┘├┤┬┴┼╭╮╯╰]/g, '+')
     .replace(/[\u2010-\u2015\u2212–—]/g, '-')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, ' ')
+    .replace(/ {3,}/g, '  ')
 }
 
-// Dynamic Question-Specific Resolver (Zero-Key AI + Wikipedia Encyclopedia) for any unseen topic
+// Dynamic Question-Specific Resolver for any unseen topic
 async function solveWithFactualEncyclopedia(questions, courseName, assignmentName, onProgress, existingMap = {}, localMatches = []) {
   const ansMap = { ...existingMap }
 
@@ -336,7 +421,7 @@ function normalizePlainAnswer(raw = '') {
   const cleaned = cleanAiAnswerText(raw)
   const lines = cleaned.split('\n')
   const hasCode =
-    /(?:Complete\s+)?Python\s+Implementation|^Program\s*:|^import\s+\w+|def\s+\w+\s*\(|print\s*\(|input\s*\(|cv2\.|#include\s*</im.test(
+    /(?:Complete\s+)?Python\s+Implementation|^Program\s*:|^import\s+\w+|def\s+\w+\s*\(|print\s*\(|input\s*\(|cv2\.|#include\s*<|public\s+class\s+\w+|SELECT\s+.+\s+FROM\s+/im.test(
       cleaned
     )
 
@@ -383,7 +468,7 @@ function normalizePlainAnswer(raw = '') {
       continue
     }
 
-    // Strip top-level "# Program to ..." AI comment line if it's the very first line of code
+    // Strip top-level "# Program to ..." comment line if it's the very first line of code
     if (out.length <= 1 && /^#\s*Program\s+to\b/i.test(t)) {
       if (!addedProgramHeader) {
         out.unshift('Program:')
@@ -448,11 +533,12 @@ async function compileCompletedPdf({
     subjectName ? `SUBJECT: ${subjectName}` : ''
   ].filter(Boolean)
 
-  for (const hRow of headerLines) {
-    const wrappedHeader = doc.splitTextToSize(sanitizeForPdfFont(hRow), contentWidth)
-    for (const hl of wrappedHeader) {
+  for (let hIdx = 0; hIdx < headerLines.length; hIdx++) {
+    const hRow = headerLines[hIdx]
+    const wrappedHeader = [].concat(doc.splitTextToSize(sanitizeForPdfFont(hRow), contentWidth) || [])
+    for (let wIdx = 0; wIdx < wrappedHeader.length; wIdx++) {
       ensureSpace(6)
-      doc.text(hl, margin, y)
+      doc.text(String(wrappedHeader[wIdx]), margin, y)
       y += 5.2
     }
     y += 4.3 // Blank line spacing between student detail rows
@@ -473,15 +559,16 @@ async function compileCompletedPdf({
     doc.setTextColor(0, 0, 0)
 
     const qParagraphs = qFull.split('\n')
-    for (const qPara of qParagraphs) {
+    for (let qpIdx = 0; qpIdx < qParagraphs.length; qpIdx++) {
+      const qPara = qParagraphs[qpIdx]
       if (!qPara.trim()) {
         y += 3
         continue
       }
-      const wrappedQ = doc.splitTextToSize(qPara, contentWidth)
-      for (const qLine of wrappedQ) {
+      const wrappedQ = [].concat(doc.splitTextToSize(qPara, contentWidth) || [])
+      for (let qlIdx = 0; qlIdx < wrappedQ.length; qlIdx++) {
         ensureSpace(6)
-        doc.text(qLine, margin, y)
+        doc.text(String(wrappedQ[qlIdx]), margin, y)
         y += 5.4
       }
     }
@@ -491,7 +578,8 @@ async function compileCompletedPdf({
     const normalizedAns = normalizePlainAnswer(item.answer || '')
     const paragraphs = sanitizeForPdfFont(normalizedAns).split('\n')
 
-    for (const para of paragraphs) {
+    for (let pIdx = 0; pIdx < paragraphs.length; pIdx++) {
+      const para = paragraphs[pIdx]
       if (!para.trim()) {
         y += 3.5
         continue
@@ -518,11 +606,11 @@ async function compileCompletedPdf({
       const leadingSpaces = (para.match(/^ +/)?.[0]?.length || 0)
       const indentMm = Math.min(leadingSpaces, 24) * 1.8
       const availWidth = Math.max(40, contentWidth - indentMm)
-      const wrapped = doc.splitTextToSize(trimmed, availWidth)
+      const wrapped = [].concat(doc.splitTextToSize(trimmed, availWidth) || [])
 
-      for (const wLine of wrapped) {
+      for (let wIdx = 0; wIdx < wrapped.length; wIdx++) {
         ensureSpace(6)
-        doc.text(wLine, margin + indentMm, y)
+        doc.text(String(wrapped[wIdx]), margin + indentMm, y)
         y += 5.4
       }
     }
