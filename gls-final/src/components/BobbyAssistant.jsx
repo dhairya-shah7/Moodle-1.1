@@ -972,6 +972,9 @@ export default function BobbyAssistant({
   }
 
   useEffect(() => {
+    if (!propAssignment && !uploadedLocalFile && !activeAttachmentFile) {
+      return
+    }
     runBobbyPipeline(0, uploadedLocalFile, activeAttachmentFile)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1206,6 +1209,22 @@ export default function BobbyAssistant({
     marginBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: '0.3px'
+  }
+
+  if (!propAssignment && !uploadedLocalFile && !activeAttachmentFile) {
+    return (
+      <div
+        style={{
+          padding: '48px 16px',
+          textAlign: 'center',
+          color: 'var(--text2)',
+          fontSize: 14,
+          fontWeight: 600
+        }}
+      >
+        Upload from Courses/Assignment
+      </div>
+    )
   }
 
   return (

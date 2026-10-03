@@ -259,28 +259,6 @@ export default function AssistantWidget() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-              <button
-                type="button"
-                onClick={() => quickUploadRef.current?.click()}
-                style={{
-                  background: 'var(--accent-soft)',
-                  border: '1px solid var(--accent-bd)',
-                  color: 'var(--accent)',
-                  cursor: 'pointer',
-                  padding: '5px 8px',
-                  borderRadius: 8,
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  whiteSpace: 'nowrap'
-                }}
-                title="Upload PDF or Word (.docx) assignment to Bobby"
-              >
-                <Upload size={11} /> Upload PDF/Word
-              </button>
-
               {activeTab === 'chat' && (
                 <button
                   onClick={clearChat}
@@ -370,18 +348,35 @@ export default function AssistantWidget() {
           </div>
 
           {activeTab === 'solver' ? (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
-              <BobbyAssistant
-                key={bobbySession?.sessionId || 'default-solver'}
-                assignment={bobbySession?.assignment || null}
-                attachmentFile={bobbySession?.attachmentFile || null}
-                localFile={bobbySession?.localFile || null}
-                embeddedInDrawer={true}
-                onClose={() => {
-                  closeBobbySession()
-                  setActiveTab('chat')
-                }}
-              />
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column' }}>
+              {bobbySession?.assignment || bobbySession?.attachmentFile || bobbySession?.localFile ? (
+                <BobbyAssistant
+                  key={bobbySession?.sessionId || 'default-solver'}
+                  assignment={bobbySession?.assignment || null}
+                  attachmentFile={bobbySession?.attachmentFile || null}
+                  localFile={bobbySession?.localFile || null}
+                  embeddedInDrawer={true}
+                  onClose={() => {
+                    closeBobbySession()
+                    setActiveTab('chat')
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    color: 'var(--text2)',
+                    fontSize: 14,
+                    fontWeight: 600
+                  }}
+                >
+                  Upload from Courses/Assignment
+                </div>
+              )}
             </div>
           ) : (
             <>
