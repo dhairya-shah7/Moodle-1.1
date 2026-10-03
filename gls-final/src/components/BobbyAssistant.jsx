@@ -524,8 +524,12 @@ async function compileCompletedPdf({
   doc.setFontSize(11)
   doc.setTextColor(0, 0, 0)
 
+  const cleanHeaderStudentName = String(studentName || '')
+    .replace(/^(?:\d{8,18}|[A-Za-z]\d{2}[A-Za-z0-9]+)\s+/i, '')
+    .trim() || studentName
+
   const headerLines = [
-    studentName ? `NAME: ${studentName}` : '',
+    cleanHeaderStudentName ? `NAME: ${cleanHeaderStudentName}` : '',
     enrollmentNo ? `ENROLLMENT NO: ${enrollmentNo}` : '',
     semester ? `SEM: ${semester}` : '',
     division ? `DIV: ${division}` : '',
@@ -624,7 +628,7 @@ async function compileCompletedPdf({
     outFilename = trimmed.toLowerCase().endsWith('.pdf') ? trimmed : `${trimmed}.pdf`
   } else {
     const cleanRoll = (rollNumber || 'student').replace(/[^a-zA-Z0-9_-]/g, '')
-    const cleanName = (studentName || 'Student').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').slice(0, 20)
+    const cleanName = (cleanHeaderStudentName || 'Student').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').slice(0, 20)
     const cleanAssign = (assignment.name || 'Assignment').replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').slice(0, 28)
 
     const filePatterns = [
@@ -735,11 +739,16 @@ export default function BobbyAssistant({
 
   const rawUserRoll = (user?.username || 'A24CSE057').trim().toUpperCase()
   const rawFullName = (user?.fullname || `${user?.firstname || ''} ${user?.lastname || ''}`).trim()
-  // Strip leading roll number from Moodle fullname if present (e.g. "a24cse057 Dhairya Shah" -> "Dhairya Shah")
+  const stripLeadingIdFromName = (nameStr = '') =>
+    String(nameStr || '')
+      .replace(new RegExp(`^${rawUserRoll}\\s+`, 'i'), '')
+      .replace(/^(?:\d{8,18}|[A-Za-z]\d{2}[A-Za-z0-9]+)\s+/i, '')
+      .trim()
+
+  const extractedEnrollmentFromName = (rawFullName.match(/^(\d{10,18})\s+/) || [])[1] || ''
   const cleanedDefaultName =
-    rawFullName.replace(new RegExp(`^${rawUserRoll}\\s+`, 'i'), '').trim() ||
-    user?.lastname ||
-    rawFullName ||
+    stripLeadingIdFromName(rawFullName) ||
+    stripLeadingIdFromName(user?.lastname || '') ||
     'Student'
 
   const coursePlusAssign = `${effectiveAssignment.coursename || ''} ${effectiveAssignment.name || ''}`
@@ -750,6 +759,7 @@ export default function BobbyAssistant({
 
   const defaultEnrollment =
     user?.idnumber ||
+    extractedEnrollmentFromName ||
     (rawUserRoll === 'A24CSE057' ? '202402626010056' : '')
   const defaultSem = semMatch ? semMatch[1] : '5'
   const defaultDiv = divMatch ? divMatch[1].toUpperCase() : 'A'
@@ -759,7 +769,10 @@ export default function BobbyAssistant({
 
   const storagePrefix = `bobby_student_${rawUserRoll.toLowerCase()}_`
 
-  const [studentName, setStudentName] = useState(() => getSavedDetail(`${storagePrefix}name`, cleanedDefaultName))
+  const [studentName, setStudentName] = useState(() => {
+    const saved = getSavedDetail(`${storagePrefix}name`, cleanedDefaultName)
+    return stripLeadingIdFromName(saved) || cleanedDefaultName
+  })
   const [enrollmentNo, setEnrollmentNo] = useState(() => getSavedDetail(`${storagePrefix}enrollment`, defaultEnrollment))
   const [semester, setSemester] = useState(() => getSavedDetail(`${storagePrefix}sem`, defaultSem))
   const [division, setDivision] = useState(() => getSavedDetail(`${storagePrefix}div`, defaultDiv))
@@ -872,50 +885,22 @@ export default function BobbyAssistant({
       } else {
         setStepText(`Resolving subject-specific answers...`)
         let factualMap = {}
-        try {
-          const solveRes = await fetch('/proxy/bobby/solve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              token: moodle.token,
-              courseName: cleanAiAnswerText(effectiveAssignment.coursename || effectiveAssignment.courseshort || ''),
-              assignmentName: cleanAiAnswerText(effectiveAssignment.name || ''),
-              extractedText: combinedText,
-              questions,
-              studentSeed: seed
-            })
-          })
-          if (solveRes.ok) {
-            const solveData = await solveRes.json()
-            if (solveData?.success && Array.isArray(solveData.questions)) {
-              solveData.questions.forEach((item, idx) => {
-                if (item?.answer && item.answer.trim()) {
-                  factualMap[idx + 1] = cleanAiAnswerText(item.answer)
-                }
-              })
-            }
-          }
-        } catch (srvErr) {
-          console.warn('Server factual resolver error, using browser resolver:', srvErr)
-        }
 
-        const missingCount = questions.filter((q, idx) => !localMatches[idx] && !factualMap[idx + 1]).length
-        if (missingCount > 0) {
-          const directMap = await solveWithFactualEncyclopedia(
-            questions,
-            effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
-            effectiveAssignment.name || '',
-            msg => setStepText(msg),
-            factualMap,
-            localMatches
-          )
-          Object.entries(directMap).forEach(([k, v]) => {
-            const num = Number(k)
-            if (v && !factualMap[num]) {
-              factualMap[num] = cleanAiAnswerText(v)
-            }
-          })
-        }
+        // Only query the encyclopedia resolver for questions that were NOT solved deterministically
+        const directMap = await solveWithFactualEncyclopedia(
+          questions,
+          effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
+          effectiveAssignment.name || '',
+          msg => setStepText(msg),
+          factualMap,
+          localMatches
+        )
+        Object.entries(directMap).forEach(([k, v]) => {
+          const num = Number(k)
+          if (v && !factualMap[num]) {
+            factualMap[num] = cleanAiAnswerText(v)
+          }
+        })
 
         generatedQA = questions.map((q, idx) => {
           if (localMatches[idx]) {
