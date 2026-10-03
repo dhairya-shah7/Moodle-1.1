@@ -11,7 +11,8 @@ import {
   fetchDynamicAiAnswer,
   fetchWikipediaFactualAnswer,
   synthesizeUniversalAcademicAnswer,
-  cleanAcademicText
+  cleanAcademicText,
+  extractSubjectTitleFromPdfText
 } from '../utils/bobbySolverEngine'
 import { indexCourseMaterials } from '../utils/bobbyVectorIndex'
 
@@ -862,13 +863,30 @@ export default function BobbyAssistant({
       }
 
       const introPlain = stripHtml(effectiveAssignment.intro || '')
+      const pdfSubjectTitle = extractSubjectTitleFromPdfText(extractedText)
+      const effectiveCourseContext =
+        pdfSubjectTitle ||
+        cleanCourseSubjectTitle(effectiveAssignment.coursename, effectiveAssignment.name) ||
+        effectiveAssignment.coursename ||
+        effectiveAssignment.courseshort ||
+        ''
+
+      let resolvedSubjectName = subjectName.trim()
+      if (
+        pdfSubjectTitle &&
+        (!resolvedSubjectName || /^(?:sem(?:ester)?\s*[-:]?\s*\d+|lab\s*task\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|computer\s*science)$/i.test(resolvedSubjectName))
+      ) {
+        resolvedSubjectName = pdfSubjectTitle.toUpperCase()
+        setSubjectName(resolvedSubjectName)
+      }
+
       if (introPlain && introPlain.length > 60) {
-        indexCourseMaterials(effectiveAssignment.coursename || effectiveAssignment.courseshort || '', introPlain.split(/\n{2,}/))
+        indexCourseMaterials(effectiveCourseContext, introPlain.split(/\n{2,}/))
       }
       const combinedText = [extractedText, introPlain].filter(Boolean).join('\n\n')
 
       setStepText('Parsing questions & solving assignment...')
-      const questions = parseQuestions(combinedText, effectiveAssignment.name, effectiveAssignment.coursename)
+      const questions = parseQuestions(combinedText, effectiveAssignment.name, effectiveCourseContext)
       setRawQuestions(questions)
 
       const seed = getCurrentSeed(studentName, rollNumber, customVarIdx)
@@ -878,7 +896,7 @@ export default function BobbyAssistant({
           q,
           idx,
           seed,
-          effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
+          effectiveCourseContext,
           effectiveAssignment.name || ''
         )
       )
@@ -899,7 +917,7 @@ export default function BobbyAssistant({
         // Only query the encyclopedia resolver for questions that were NOT solved deterministically
         const directMap = await solveWithFactualEncyclopedia(
           questions,
-          effectiveAssignment.coursename || effectiveAssignment.courseshort || '',
+          effectiveCourseContext,
           effectiveAssignment.name || '',
           msg => setStepText(msg),
           factualMap,
@@ -927,7 +945,7 @@ export default function BobbyAssistant({
               answer: normalizePlainAnswer(factualMap[idx + 1])
             }
           }
-          const fallbackObj = generateAnswerForQuestion(q, idx, effectiveAssignment.name, effectiveAssignment.coursename, seed)
+          const fallbackObj = generateAnswerForQuestion(q, idx, effectiveAssignment.name, effectiveCourseContext, seed)
           return {
             ...fallbackObj,
             answer: normalizePlainAnswer(fallbackObj.answer)
@@ -947,7 +965,7 @@ export default function BobbyAssistant({
         semester: semester.trim(),
         division: division.trim(),
         rollNumber: rollNumber.trim(),
-        subjectName: subjectName.trim(),
+        subjectName: resolvedSubjectName || subjectName.trim(),
         qaList: generatedQA,
         studentSeed: seed,
         customFilename

@@ -60,10 +60,17 @@ export function isSubmissionInstruction(text = '') {
   )
 }
 
-// Detect standalone topic/section headers (e.g. "Arrays", "Stack", "DIVPL Assignment practical question", "Module 1")
+// Detect standalone topic/section headers (e.g. "Arrays", "Stack", "DIVPL Assignment practical question", "241601106 Publishing Multimedia Tools Practicals", "Module 1")
 export function isStandaloneSectionHeader(line = '') {
   const t = String(line || '').trim()
   if (!t) return true
+  // Course code + title header line (e.g. "241601106 Publishing Multimedia Tools Practicals" or "230101102 Data Structures Laboratory")
+  if (/^\d{5,12}\s+[A-Za-z].*(?:practicals?|laboratory|assignment|syllabus|questions?|manual|course|paper|exam|test|semester|sem\b)/i.test(t)) {
+    return true
+  }
+  if (/^\d{6,12}\s+[A-Z][A-Za-z\s&-]{3,65}$/.test(t) && !/\b(?:write|explain|define|implement|use|find|calculate|solve|convert|design|create|draw|discuss|compare|differentiate|read|display|print|accept)\b/i.test(t)) {
+    return true
+  }
   if (
     /^(?:arrays?|stacks?|queues?|linked\s+lists?|singly\s+linked\s+lists?|doubly\s+linked\s+lists?|binary\s+trees?|binary\s+search\s+trees?(?:\s*\(bst\))?|avl\s+trees?|graphs?|hashing|heaps?|searching\s+and\s+sorting|sorting\s+and\s+searching|trees?\s+and\s+graphs?|dynamic\s+programming|greedy\s+algorithms?|recursion|strings?|matrices|pointers?|structures?|file\s+handling|exception\s+handling|multithreading|unit\s*[-:]?\s*\d+|module\s*[-:]?\s*\d+|section\s*[-:]?\s*[a-z0-9]+|part\s*[-:]?\s*[a-z0-9]+|practice\s+questions|data\s+structures\s+practice\s+questions)$/i.test(
       t
@@ -71,15 +78,15 @@ export function isStandaloneSectionHeader(line = '') {
   ) {
     return true
   }
-  // Filter standalone document/sheet titles like "DIVPL Assignment practical question", "Assignment 1 Practical Questions", "Lab Manual", etc.
+  // Filter standalone document/sheet titles like "DIVPL Assignment practical question", "Publishing Multimedia Tools Practicals", "Lab Manual", etc.
   if (
-    !/^(?:Question\s*\d+|Q\s*\.?\s*\d+|\d+\s*[.)]|[a-h]\s*[.)]|\([a-h]\)|\((?:i|ii|iii|iv|v|vi)\))/i.test(t) &&
+    !/^(?:Question\s*\d+|Q\s*\.?\s*\d+|\d+\s*[.)]|[1-9]\d?\s+(?:Use|Write|Explain|Define|Create|Design|Implement|Print|Display|Accept|Calculate|Convert|Check|Find|Generate|Draw|Solve|Perform|Apply)|[a-h]\s*[.)]|\([a-h]\)|\((?:i|ii|iii|iv|v|vi)\))/i.test(t) &&
     !t.includes('?') &&
     t.length < 95 &&
-    /\b(?:assignment\s+practical\s+questions?|practical\s+questions?|practical\s+assignment|assignment\s*[-:]?\s*\d*$|lab\s+manual|lab\s+exercise|question\s+bank|tutorial\s+sheet|gls\s+university|faculty\s+of\s+computer)\b/i.test(
+    /\b(?:assignment\s+practical\s+questions?|practical\s+questions?|practical\s+assignment|practicals?$|assignment\s*[-:]?\s*\d*$|lab\s+manual|lab\s+exercise|question\s+bank|tutorial\s+sheet|gls\s+university|faculty\s+of\s+computer)\b/i.test(
       t
     ) &&
-    !/\b(?:write|explain|define|implement|apply|find|calculate|solve|convert|design|create|draw|discuss|compare|differentiate|read|display)\b/i.test(
+    !/\b(?:write|explain|define|implement|apply|find|calculate|solve|convert|design|create|draw|discuss|compare|differentiate|read|display|use)\b/i.test(
       t
     )
   ) {
@@ -88,7 +95,7 @@ export function isStandaloneSectionHeader(line = '') {
   return false
 }
 
-// Universal Question Parser: supports 1..100+ questions, ignores document titles before Question 1, and preserves sub-parts (a, b, c, d, e) and bullet points
+// Universal Question Parser: supports 1..100+ questions (both "1. Question" and dotless "1 Use Inkscape..."), ignores document/course titles before Question 1, and preserves sub-parts (a, b, c, d, e) and bullet points
 export function parseQuestions(rawText, assignmentName = '', courseName = '') {
   let cleaned = cleanAcademicText(rawText || '')
     .replace(/\r\n/g, '\n')
@@ -128,6 +135,12 @@ export function parseQuestions(rawText, assignmentName = '', courseName = '') {
     '\n'
   )
 
+  // Also split inline dotless numbered questions like "1 Use Inkscape ... 2 Use Inkscape ... 3 Use Inkscape ..."
+  cleaned = cleaned.replace(
+    /(?:^|\n|\s+)(?=[1-9]\d{0,1}\s+(?:Use|Write|Explain|Define|Describe|Discuss|Differentiate|Compare|Distinguish|State|List|Give|Find|Calculate|Compute|Solve|Perform|Apply|Implement|Create|Design|Draw|Generate|Display|Print|Accept|Convert|Check|Read|Reverse|Capitalize|Format|Align)\b)/g,
+    '\n'
+  )
+
   // Ensure inline sub-part markers (e.g. "a. Resize ... b. Crop ... c. Split ...") start on their own lines inside the parent question
   cleaned = cleaned.replace(
     /(?:\s{2,}|(?<=[.:;?!])\s+)(?=(?:[a-h]\s*[.)]\s+[A-Z]|\([a-h]\)\s*[A-Z]|\((?:i|ii|iii|iv|v|vi)\)\s*[A-Z]))/g,
@@ -139,26 +152,30 @@ export function parseQuestions(rawText, assignmentName = '', courseName = '') {
   let currentQ = ''
   let currentNum = null
 
-  // Matches "1. Write", "1)Read", "10.Implement", "Q1.", "Question 1:", "Task 1:", "Problem 1:"
-  // IMPORTANT: Never match lowercase automaton states like "q0 {q0, q1}" or "q1 {q2} {q3}"!
-  const qStartRegex = /^(?:Question\s*([1-9]\d{0,2})\s*[.:)-]*|Q\s*\.?\s*([1-9]\d{0,2})\s*[.:)-]+|([1-9]\d{0,2})\s*[.)]\s*(?=[A-Za-z"(]|$)|Task\s*([1-9]\d{0,2})\s*[.:)-]+|Problem\s*([1-9]\d{0,2})\s*[.:)-]+)/i
+  // Matches "1. Write", "1)Read", "10.Implement", "Q1.", "Question 1:", "Task 1:", "Problem 1:", AND dotless "1 Use Inkscape...", "2 Write a program..."
+  // IMPORTANT: Never match lowercase automaton states like "q0 {q0, q1}" or 6+ digit course codes like "241601106 Publishing..."!
+  const qStartRegex =
+    /^(?:Question\s*([1-9]\d{0,2})\s*[.:)-]*|Q\s*\.?\s*([1-9]\d{0,2})\s*[.:)-]+|([1-9]\d{0,2})\s*[.)]\s*(?=[A-Za-z"(]|$)|Task\s*([1-9]\d{0,2})\s*[.:)-]+|Problem\s*([1-9]\d{0,2})\s*[.:)-]+|([1-9]\d{0,1})\s+(?=[A-Z][a-z]+\b))/i
   const isAutomataStateRow = /^q\d+\s+(?:\{|∅|"|--|->|q\d+)/i
+  const isCourseCodeLine = /^\d{5,12}\s+/
 
-  // Check if the document has numbered questions (1., 2., Q1, etc.) so any preamble/title lines before Question 1 are strictly ignored
-  const hasNumberedQuestions = lines.some(l => !isAutomataStateRow.test(l) && qStartRegex.test(l))
+  // Check if the document has numbered questions (1., 2., Q1, or dotless "1 Use...") so any preamble/title lines before Question 1 are strictly ignored
+  const hasNumberedQuestions = lines.some(
+    l => !isAutomataStateRow.test(l) && !isCourseCodeLine.test(l) && !isStandaloneSectionHeader(l) && qStartRegex.test(l)
+  )
 
   for (const line of lines) {
     if (isSubmissionInstruction(line) || isStandaloneSectionHeader(line)) {
       continue
     }
 
-    const match = !isAutomataStateRow.test(line) ? line.match(qStartRegex) : null
+    const match = !isAutomataStateRow.test(line) && !isCourseCodeLine.test(line) ? line.match(qStartRegex) : null
 
     // Strictly skip ALL unnumbered title/header/preamble lines before Question 1 when the document has numbered questions
     if (currentNum === null && !match) {
       if (
         hasNumberedQuestions ||
-        /^(assignment[\s-]*\d*|.*assignment\s+practical\s+question.*|probability and statistics|structured.*object oriented|data structures|compiler design|ch[\s-]*\d+|chapter[\s-]*\d+|gls university|b\.?tech|bca|mca|semester|sem\s*-\s*\d+|submission date|note\s*:)/i.test(
+        /^(assignment[\s-]*\d*|.*assignment\s+practical\s+question.*|.*\bpracticals?$|probability and statistics|structured.*object oriented|data structures|compiler design|ch[\s-]*\d+|chapter[\s-]*\d+|gls university|b\.?tech|bca|mca|semester|sem\s*-\s*\d+|submission date|note\s*:)/i.test(
           line
         ) ||
         line.length < 40
@@ -168,7 +185,7 @@ export function parseQuestions(rawText, assignmentName = '', courseName = '') {
     }
 
     if (match) {
-      const detectedNum = parseInt(match[1] || match[2] || match[3] || match[4] || match[5], 10)
+      const detectedNum = parseInt(match[1] || match[2] || match[3] || match[4] || match[5] || match[6], 10)
       const bodyAfterNum = line.replace(qStartRegex, '').trim()
 
       // Handle empty question number "16." in Probability & Statistics assignment
@@ -2942,12 +2959,18 @@ function solvePythonAndGeneralCodingQuestion(qText = '', index = 0, courseName =
 
   // 6. Universal Dynamic Multi-Bullet & General Imperative Coding Synthesizer (Python / C / C++ / Java / JS / PHP)
   const { header, bullets } = extractBulletedOperations(qText)
+  const isMultimediaOrDesignTask =
+    /\b(?:inkscape|gimp|photoshop|coreldraw|illustrator|canva|figma|blender|audacity|indesign|publishing\s+multimedia|multimedia\s+tools|food\s+menu|birthday\s+card|visiting\s+card|greeting\s+card|invitation\s+card)\b/i.test(
+      `${qClean} ${contextLower}`
+    )
+  if (isMultimediaOrDesignTask) return null
+
   const isProgrammingCourse =
     /\b(?:python|java|c\+\+|c#|javascript|typescript|php|ruby|golang|rust|programming|coding|dsa|data\s+structures|algorithm|software\s+development)\b/i.test(
       contextLower
     )
   const startsWithImperativeCodingVerb =
-    /^(?:q(?:uestion)?\s*\d+\s*[:.)-]?\s*)?(?:write\s+a\s+(?:python|c|c\+\+|java|javascript|js|php)?\s*(?:program|script|function|code)\s+to\s+|wap\s+to\s+|program\s+to\s+)?(?:print|display|accept|input|read|calculate|compute|format|convert|check\s+whether|check\s+if|find\s+the|capitalize|reverse|generate|align|create\s+a|swap|sort|count|concatenate|slice|merge|extract)\b/i.test(
+    /^(?:q(?:uestion)?\s*\d+\s*[:.)-]?\s*)?(?:write\s+a\s+(?:python|c|c\+\+|java|javascript|js|php)?\s*(?:program|script|function|code)\s+to\s+|wap\s+to\s+|program\s+to\s+)?(?:take|ask|prompt|get|enter|store|define|implement|demonstrate|print|display|accept|input|read|calculate|compute|format|convert|check\s+whether|check\s+if|find\s+the|capitalize|reverse|generate|align|create\s+a|swap|sort|count|concatenate|slice|merge|extract)\b/i.test(
       qClean
     ) &&
     !/\b(?:histogram|image\s+matrix|image\s+addition|pixel|euclidean|city-block|chessboard|4-neighborhood|8-neighborhood|interpolation|shrinking|dfa|nfa|cfg|left\s+recursion|left\s+factoring|first\s+and\s+follow|lr\(0\)|slr|lalr|clr|normal\s+form|1nf|2nf|3nf|bcnf|deadlock|paging|segmentation|osi\s+model|tcp\/ip)\b/i.test(
@@ -4681,7 +4704,7 @@ function solveDipAndAlgorithmicNumericalQuestion(qText = '', courseName = '', as
   // 3. DIP 2D Matrix Histogram Equalization (e.g. Q6: "Perform histogram equalization on the following image which has intensity levels [0,8]: 4 8 2 4 / 4 8 6 6 / 6 4 8 8 / 2 4 4 4")
   if (
     qLower.includes('histogram equalization') &&
-    (/\d+\s+\d+\s+\d+/.test(qClean) || qLower.includes('intensity levels'))
+    (/\d+\s+\d+\s+\d+/.test(qClean) || qLower.includes('intensity levels') || qLower.includes('perform') || qLower.includes('following image') || qLower.includes('given image'))
   ) {
     // Strip the range "[0,8]" or "[0, 7]" first before extracting matrix numbers
     const rangeMatch = qClean.match(/\[\s*0\s*,\s*(\d+)\s*\]/)
@@ -5924,7 +5947,7 @@ export function solveMathOrStatsQuestion(qText, index = 0, studentSeed = 0, cour
   }
 
   // University Subject & Domain Knowledge Engine (Covers B.Tech, BCA, MCA, M.Sc IT, FCAIT subjects)
-  const subjectSol = solveUniversitySubjectQuestion(qClean, courseName, assignmentName)
+  const subjectSol = solveUniversitySubjectQuestion(qClean, courseName, assignmentName, index)
   if (subjectSol) return subjectSol
 
   // Multi-Subpart Universal Decomposer: if a question has sub-parts (a., b., c., d., e., (a), (b), (i), (ii)), solve each sub-part with parent context
@@ -5936,7 +5959,7 @@ export function solveMathOrStatsQuestion(qText, index = 0, studentSeed = 0, cour
       const combinedPrompt = parsedSub.header ? `${parsedSub.header} - ${sp.text}` : sp.text
       const subAns =
         solveCodingOrDsaQuestion(combinedPrompt, i, courseName, assignmentName) ||
-        solveUniversitySubjectQuestion(combinedPrompt, courseName, assignmentName)
+        solveUniversitySubjectQuestion(combinedPrompt, courseName, assignmentName, i)
       if (subAns) {
         subAnswers.push(`(${sp.label}) ${sp.text}:\n${subAns}`)
       }
@@ -5956,7 +5979,7 @@ export function solveMathOrStatsQuestion(qText, index = 0, studentSeed = 0, cour
 //     Cloud, Cyber Security, SE, Linux/Shell, PL/SQL, IoT, COA, Graphics)
 // ══════════════════════════════════════════════════════════════════════════
 
-function solveUniversitySubjectQuestion(qClean = '', courseName = '', assignmentName = '') {
+function solveUniversitySubjectQuestion(qClean = '', courseName = '', assignmentName = '', index = 0) {
   const qLower = qClean.toLowerCase()
   const contextLower = `${qClean} ${courseName} ${assignmentName}`.toLowerCase()
 
@@ -6387,6 +6410,152 @@ function solveUniversitySubjectQuestion(qClean = '', courseName = '', assignment
     ].join('\n\n')
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // 3B. PUBLISHING MULTIMEDIA TOOLS, INKSCAPE, GIMP & GRAPHIC DESIGN PRACTICALS
+  // ══════════════════════════════════════════════════════════════════════════
+  if (
+    /\b(?:inkscape|gimp|coreldraw|photoshop|illustrator|canva|figma|audacity|blender|multimedia\s+tools|publishing\s+multimedia|vector\s+graphic|bezier\s+tool)\b/i.test(
+      `${qClean} ${courseName} ${assignmentName}`
+    )
+  ) {
+    // 1. Food / Restaurant / Cafe Menu in Inkscape
+    if (/\b(?:food\s+menu|restaurant\s+menu|cafe\s+menu|menu\s+card|menu)\b/i.test(qClean)) {
+      return [
+        `Practical Design & Implementation of a Food Menu Card in Inkscape (Vector Graphics):`,
+        `1. Document Setup & Page Geometry:\n` +
+          `   - Launch Inkscape and open File -> Document Properties (Shift + Ctrl + D).\n` +
+          `   - Set Page Size to A4 Portrait (210 mm x 297 mm) or Bi-Fold Menu (420 mm x 297 mm), Display Units = mm, and Color Mode = RGB / Print-ready SVG.\n` +
+          `   - Enable Page Border, Snapping (%), and create 10 mm bleed/margin guides around all four edges.`,
+        `2. Layer Architecture (Layer -> Layers and Objects, Shift + Ctrl + L):\n` +
+          `   - Layer 1: Background & Texture (Dark charcoal #1E1E24 or warm cream #FFFDF7 base rectangle using the Rectangle Tool [R]).\n` +
+          `   - Layer 2: Decorative Borders, Dividers & Category Ribbons.\n` +
+          `   - Layer 3: Vector Food Illustrations & Badge Icons.\n` +
+          `   - Layer 4: Typography (Restaurant Header, Category Titles, Dish Names, Dotted Leaders & Prices).`,
+        `3. Step-by-Step Vector Construction Procedure:\n` +
+          `   - Step 1 (Background & Border Frame): Select the Rectangle Tool (R), draw a full-page rectangle (210 x 297 mm), apply a subtle Radial Gradient (Ctrl + F1 / G) from #2B2D42 to #1A1B26, and add an inner ornamental gold border (#D4AF37, Stroke Width = 1.2 mm) using Path -> Linked Offset.\n` +
+          `   - Step 2 (Header Banner & Emblem): Use the Bezier Curve Tool (B) and Stars/Polygons Tool (*) to draw a chef hat / cutlery emblem at the top center. Group (Ctrl + G) and align horizontally using Align and Distribute (Shift + Ctrl + A).\n` +
+          `   - Step 3 (Category Ribbons & Section Dividers): Draw rounded rectangles (Rx = 4 mm) filled with warm amber (#F4A261) for sections: "STARTERS & APPETIZERS", "MAIN COURSE", "CHEF SPECIALS", and "BEVERAGES & DESSERTS".\n` +
+          `   - Step 4 (Menu Items & Price Alignment): Select the Text Tool (T), choose a display serif/sans font (e.g., Montserrat Bold 28 pt for title, Open Sans 11 pt for items), and align dish names on the left with right-aligned price tags using Align and Distribute.\n` +
+          `   - Step 5 (Vector Food Thumbnails): Construct circular clipping frames using the Ellipse Tool (E), place vector food illustrations inside, select both, and apply Object -> Clip -> Set.`,
+        `4. Final Verification & Export:\n` +
+          `   - Convert decorative text headers to vector paths via Path -> Object to Path (Shift + Ctrl + C) to preserve font rendering.\n` +
+          `   - Save native vector master as food_menu.svg (Ctrl + S) and export print-ready output via File -> Export PNG Image (Shift + Ctrl + E, 300 DPI) or File -> Save a Copy as PDF.`
+      ].join('\n\n')
+    }
+
+    // 2. Birthday Card / Greeting Card in Inkscape
+    if (/\b(?:birthday\s+card|birthday\s+invitation|birthday\s+poster|greeting\s+card|invitation\s+card)\b/i.test(qClean)) {
+      return [
+        `Practical Design & Implementation of a Birthday Greeting Card in Inkscape:`,
+        `1. Document & Canvas Configuration:\n` +
+          `   - Open Inkscape -> File -> Document Properties (Shift + Ctrl + D).\n` +
+          `   - Set custom Greeting Card dimensions to A5 (148 mm x 210 mm) or Square Card (150 mm x 150 mm) at 300 DPI export resolution.\n` +
+          `   - Enable Grid Lines (View -> Page Grid, #) and Margin Guides for balanced visual composition.`,
+        `2. Step-by-Step Vector Construction in Inkscape:\n` +
+          `   - Step 1 (Festive Gradient Background): Use the Rectangle Tool (R) to draw the card base and apply a vibrant Linear/Radial Gradient (G) using the Fill and Stroke panel (Shift + Ctrl + F) with pastel or festive hues (#FFEFBA to #FFFFFF or #FF9A9E to #FAD0C4).\n` +
+          `   - Step 2 (Balloons & Gloss Highlights): Select the Circle/Ellipse Tool (E) to draw overlapping oval balloons in vibrant colors (#E63946, #457B9D, #FFB703, #2A9D8F). Convert to path (Shift + Ctrl + C), pull the bottom node slightly downward using the Node Tool (N) for a natural balloon silhouette, add a small triangle knot at the base, and draw curved strings using the Bezier Tool (B) with Spiro Path effect.\n` +
+          `   - Step 3 (Bunting Flags & Confetti): Draw a triangular flag using the Polygon Tool (*, 3 corners), duplicate (Ctrl + D) across a curved guide path, and scatter small vector stars/circles for confetti.\n` +
+          `   - Step 4 (Layered Birthday Cake Vector): Construct a 3-tier cake using rounded rectangles (R), add wavy icing drips using the Bezier Tool (B) + Boolean Path -> Intersection, and place vector candles on top with teardrop flame paths.\n` +
+          `   - Step 5 (Typography & Curved Banner Text): Use the Text Tool (T) to write "Happy Birthday!", apply a decorative script font with a contrasting stroke outline (Order: Fill, Stroke, Markers), and curve the subtitle along a path using Text -> Put on Path.`,
+        `3. Finishing Effects & Export:\n` +
+          `   - Apply subtle drop shadows to the balloons and title text via Filters -> Shadows and Glows -> Drop Shadow.\n` +
+          `   - Group all card elements (Ctrl + A, Ctrl + G), clip any overhanging confetti to the card boundary (Object -> Clip -> Set), save as birthday_card.svg, and export a 300 DPI PNG/PDF.`
+      ].join('\n\n')
+    }
+
+    // 3. Visiting Card / Business Card / ID Card / Generic Card in Inkscape
+    if (/\b(?:visiting\s+card|business\s+card|id\s+card|identity\s+card|card)\b/i.test(qClean)) {
+      return [
+        `Practical Design & Implementation of a Vector Card (Business / Visiting / Greeting Card) in Inkscape:`,
+        `1. Document Setup & Standard Card Dimensions:\n` +
+          `   - Open Inkscape and press Shift + Ctrl + D (Document Properties).\n` +
+          `   - Set Units to millimeters (mm) and configure standard card dimensions: 90 mm x 55 mm (Standard Business/Visiting Card) or 105 mm x 148 mm (Postcard/Greeting Card), with a 3 mm bleed margin guide on all sides.`,
+        `2. Step-by-Step Vector Design Workflow:\n` +
+          `   - Step 1 (Base Card Canvas): Select the Rectangle Tool (R), create a 90 mm x 55 mm base rectangle at coordinates (X: 0, Y: 0), and fill it with a clean modern palette (e.g., Deep Navy #0F172A background with crisp White #FFFFFF and Cyan/Gold #38BDF8 accents).\n` +
+          `   - Step 2 (Geometric Ribbon / Wave Accent): Duplicate the base rectangle (Ctrl + D), convert it to a path (Path -> Object to Path, Shift + Ctrl + C), switch to the Node Tool (N), and sculpt diagonal or curved Bezier geometric waves across the left/bottom edge. Use Path -> Intersection to clip the wave cleanly inside the card border.\n` +
+          `   - Step 3 (Vector Brand Logo & Monogram): Use the Ellipse Tool (E), Polygon/Star Tool (*), and Boolean Path Operations (Path -> Union [Ctrl + +], Difference [Ctrl + -], Intersection [Ctrl + *]) to construct the central brand emblem or logo mark.\n` +
+          `   - Step 4 (Typography & Hierarchy): Use the Text Tool (T) to add the Name/Heading (12 pt Bold), Designation/Subtitle (8 pt Medium), and Contact Details (Phone, Email, Website, Address in 6.5 pt Regular). Use the Align and Distribute panel (Shift + Ctrl + A) to maintain exact vertical spacing.\n` +
+          `   - Step 5 (Vector Contact Icons): Create minimalist phone, envelope, and location-pin vector icons inside 4 mm circular badges aligned beside each contact line.`,
+        `3. Finalization & Export:\n` +
+          `   - Select all text objects and apply Path -> Object to Path (Shift + Ctrl + C) so typography renders identically on any machine.\n` +
+          `   - Save the editable vector file as card_design.svg and export a 300 DPI raster/print version via File -> Export PNG Image (Shift + Ctrl + E).`
+      ].join('\n\n')
+    }
+
+    // 4. Vector Image / Illustration / Logo / Artwork in Inkscape ("Use Inkscape and create given below image")
+    if (/\b(?:image|illustration|logo|drawing|artwork|diagram|poster|badge|banner|icon|shape|scene)\b/i.test(qClean)) {
+      const variantIdx = Math.abs(Number(index || 0)) % 3
+      if (variantIdx === 1) {
+        return [
+          `Practical Vector Illustration & Layered Artwork Creation in Inkscape (Bezier Curves, Boolean Paths & Gradients):`,
+          `1. Document & Grid Initialization:\n` +
+            `   - Open Inkscape -> File -> Document Properties (Shift + Ctrl + D), set canvas size to 1000 x 1000 px (or A4 Landscape), and enable Snapping to Cusp Nodes and Smooth Nodes.\n` +
+            `   - Organize the artwork into three dedicated layers (Shift + Ctrl + L): Background Base, Midground Vector Shapes, and Foreground Detail/Highlights.`,
+          `2. Step-by-Step Vector Image Construction:\n` +
+            `   - Step 1 (Primitive Shape Blocking): Use the Rectangle Tool (R), Circle/Ellipse Tool (E), and Star/Polygon Tool (*) to construct the primary geometric building blocks of the given reference image.\n` +
+            `   - Step 2 (Boolean Path Modeling): Combine and carve overlapping shapes using Boolean operations:\n` +
+            `     * Path -> Union (Ctrl + +) to merge connected silhouettes.\n` +
+            `     * Path -> Difference (Ctrl + -) to cut windows, crescents, or negative-space cutouts.\n` +
+            `     * Path -> Intersection (Ctrl + *) to create shaded inner highlights that conform strictly to the parent shape boundary.\n` +
+            `   - Step 3 (Custom Bezier Contours & Node Sculpting): Select the Bezier Pen Tool (B) to trace organic curves and custom contours. Switch to the Node Tool (N) and convert corner nodes to Smooth/Symmetric Nodes (Shift + S / Shift + Y) for clean curvature.\n` +
+            `   - Step 4 (Color Fill, Gradients & Stroke Styling): Open Fill and Stroke (Shift + Ctrl + F). Apply flat vector fills, smooth Linear/Radial Gradients (G), and uniform rounded stroke caps/joins (Join: Round, Cap: Round).`,
+          `3. Alignment, Grouping & Export:\n` +
+            `   - Center and align symmetrical components using Object -> Align and Distribute (Shift + Ctrl + A).\n` +
+            `   - Group the completed artwork (Ctrl + G), save as vector_illustration_2.svg, and export a high-resolution 300 DPI PNG via Shift + Ctrl + E.`
+        ].join('\n\n')
+      }
+      if (variantIdx === 2) {
+        return [
+          `Practical Symmetrical & Composite Vector Graphic Construction in Inkscape (Clones, Clipping Masks & Path Effects):`,
+          `1. Canvas & Symmetry Setup:\n` +
+            `   - Launch Inkscape, open Document Properties (Shift + Ctrl + D), set a 1080 x 1080 px artboard, and pull vertical and horizontal center guides from the rulers to mark the origin.`,
+          `2. Step-by-Step Vector Graphic Procedure:\n` +
+            `   - Step 1 (Central Core & Concentric Geometry): Use the Ellipse Tool (E) while holding Ctrl + Shift to draw concentric circles from the center guide intersection. Use Stroke-to-Path (Ctrl + Alt + C) and Path -> Division (Ctrl + /) to segment rings and radial arcs.\n` +
+            `   - Step 2 (Rotational Symmetry & Duplicate Transforms): Construct one primary decorative petal/segment or isometric module, move its rotation pivot cross-hair to the center guide, and duplicate + rotate (Ctrl + D, Object -> Transform -> Rotate by 30 deg / 45 deg / 60 deg) or apply Path -> Path Effects -> Rotate Copies / Mirror Symmetry.\n` +
+            `   - Step 3 (Shading via Clipping & Masking): Create highlight and shadow overlays, select the base silhouette and overlay together, and apply Object -> Clip -> Set so all internal shading stays crisp inside the vector edges.\n` +
+            `   - Step 4 (Fine Detailing & Outlines): Adjust stroke weights in Fill and Stroke (Shift + Ctrl + F), set Stroke Order to "Fill, Stroke, Markers", and refine anchor handles with the Node Tool (N).`,
+          `3. Output Verification & Export:\n` +
+            `   - Inspect the vector wireframe in View -> Display Mode -> Outline to verify there are no stray open nodes or overlapping duplicate paths.\n` +
+            `   - Save the final scalable vector graphic as composite_vector_graphic.svg and export to PNG (300 DPI).`
+        ].join('\n\n')
+      }
+      return [
+        `Practical Vector Graphic & Image Creation in Inkscape (Geometric Primitives, Node Editing & Path Operations):`,
+        `1. Workspace & Artboard Configuration:\n` +
+          `   - Launch Inkscape and open File -> Document Properties (Shift + Ctrl + D).\n` +
+          `   - Set the artboard to 800 x 800 px (or A4), enable Page Border and Snapping (%), and open the Fill and Stroke panel (Shift + Ctrl + F) and Align and Distribute panel (Shift + Ctrl + A).`,
+        `2. Step-by-Step Vector Construction of the Given Image:\n` +
+          `   - Step 1 (Base Shapes & Proportions): Analyze the given reference image into fundamental geometric primitives (circles, rounded rectangles, polygons). Use the Rectangle Tool (R) and Circle/Ellipse Tool (E) while holding Ctrl to maintain exact aspect ratios.\n` +
+          `   - Step 2 (Converting Primitives to Editable Paths): Select the base shapes and click Path -> Object to Path (Shift + Ctrl + C). Use the Node Tool (N) to insert, delete, or curve path segments and adjust Bezier handles for exact contour matching.\n` +
+          `   - Step 3 (Combining Shapes with Boolean Operations): Select pairs of overlapping paths and apply:\n` +
+          `     * Path -> Union (Ctrl + +) to fuse components into a single unified silhouette.\n` +
+          `     * Path -> Difference (Ctrl + -) to punch out inner apertures and cutouts.\n` +
+          `     * Path -> Exclusion / Intersection to form contrasting overlapping regions.\n` +
+          `   - Step 4 (Applying Fills, Gradients & Strokes): Use the Dropper Tool (D) or Fill and Stroke dialog (Shift + Ctrl + F) to assign solid fills, multi-stop Linear/Radial Gradients (G), and uniform stroke widths with round joins.\n` +
+          `   - Step 5 (Layer Ordering & Grouping): Adjust z-order stacking using Page Up / Page Down (Raise/Lower) and group logical sub-components (Ctrl + G).`,
+        `3. Final Export:\n` +
+          `   - Save the master vector file as inkscape_image_1.svg (Ctrl + S) and export the rendered bitmap via File -> Export PNG Image (Shift + Ctrl + E) at 300 DPI.`
+      ].join('\n\n')
+    }
+
+    // 5. General Inkscape / GIMP / Multimedia Practical Fallback
+    const toolMatch = qClean.match(/\b(Inkscape|GIMP|CorelDRAW|Photoshop|Illustrator|Audacity|Blender|Canva|Figma)\b/i)
+    const toolName = toolMatch ? toolMatch[1] : 'Inkscape'
+    return [
+      `Practical Workflow & Implementation in ${toolName} (${cleanAcademicText(courseName || 'Publishing Multimedia Tools')}):`,
+      `1. Document & Workspace Setup:\n` +
+        `   - Launch ${toolName} and configure the document canvas dimensions, resolution (300 DPI for print / 72-150 DPI for screen), and color profile (RGB/CMYK) according to the task specification: "${qClean}".\n` +
+        `   - Set up non-destructive layers, rulers, margin guides, and grid snapping for accurate placement.`,
+      `2. Step-by-Step Practical Execution:\n` +
+        `   - Step 1 (Base Layout & Geometry): Construct the foundational background and structural frames using geometric shape tools (Rectangle, Ellipse, Polygon) and align them to the canvas center.\n` +
+        `   - Step 2 (Path Sculpting / Layer Compositing): Use Bezier paths, node editing, Boolean path operations (Union, Difference, Intersection), and clipping masks to build the primary visual elements.\n` +
+        `   - Step 3 (Color, Gradients & Typography): Apply harmonious color fills, linear/radial gradients, stroke contours, and hierarchical typography with proper kerning and alignment.\n` +
+        `   - Step 4 (Visual Refinement): Verify visual balance, z-order hierarchy, and clean vector/raster boundaries.`,
+      `3. Saving & Final Export:\n` +
+        `   - Save the editable native project file (.svg / .xcf) and export the final deliverable in high-resolution PNG/PDF format.`
+    ].join('\n\n')
+  }
+
   return null
 }
 
@@ -6394,13 +6563,33 @@ function solveUniversitySubjectQuestion(qClean = '', courseName = '', assignment
 // 4. SUBJECT-SCOPED FACTUAL ENCYCLOPEDIA RESOLVER (100% NON-AI, MEDIAWIKI API)
 // ══════════════════════════════════════════════════════════════════════════
 
+export function extractSubjectTitleFromPdfText(rawText = '') {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+  for (const line of lines.slice(0, 12)) {
+    // Match course code + title line like "241601106 Publishing Multimedia Tools Practicals"
+    const codeTitleMatch = line.match(/^(?:[A-Z]{2,6}[-_]?\d{3,8}|\d{6,12})\s+([A-Za-z][A-Za-z0-9\s,&()/-]{4,75})$/)
+    if (codeTitleMatch && !/\b(?:use\s+inkscape|write\s+a|create\s+below|find\s+the|calculate)\b/i.test(codeTitleMatch[1])) {
+      return codeTitleMatch[1].replace(/\s+/g, ' ').trim()
+    }
+    const labeledMatch = line.match(/^(?:subject|course\s*(?:name|title)?|paper)\s*[:=-]\s*([A-Za-z][A-Za-z0-9\s,&()/-]{3,75})$/i)
+    if (labeledMatch) {
+      return labeledMatch[1].replace(/\s+/g, ' ').trim()
+    }
+  }
+  return ''
+}
+
 export function deriveSubjectDomainTag(courseName = '', assignmentName = '') {
   const raw = cleanAcademicText(`${courseName} ${assignmentName}`)
-    .replace(/\b(?:sem(?:ester)?\s*[-:]?\s*\d+|div(?:ision)?\s*[-:]?\s*[a-z]|module\s*[-:]?\s*[\d-]+|unit\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|laboratory|lab\b|task\s*[-:]?\s*\d+|b\.?tech|bca|mca|m\.?sc|fcait|\d{4,})\b/gi, ' ')
+    .replace(/\b(?:sem(?:ester)?\s*[-:]?\s*\d+|div(?:ision)?\s*[-:]?\s*[a-z]|module\s*[-:]?\s*[\d-]+|unit\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+|practical\s*[-:]?\s*\d+|practicals|laboratory|lab\b|task\s*[-:]?\s*\d+|b\.?tech|bca|mca|m\.?sc|fcait|\d{4,})\b/gi, ' ')
     .replace(/[()[\]_-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
+  if (/multimedia|publishing|inkscape|gimp|coreldraw|photoshop|graphic\s+design|animation/i.test(raw)) return 'Vector graphics Multimedia Graphic design'
   if (/divpl|image\s+and\s+video|image\s+processing|computer\s+vision/i.test(raw)) return 'Digital image processing'
   if (/python/i.test(raw)) return 'Python programming'
   if (/compiler\s+design|automata|toc\b/i.test(raw)) return 'Compiler construction Formal language'
@@ -6420,13 +6609,24 @@ export function deriveSubjectDomainTag(courseName = '', assignmentName = '') {
 }
 
 export function extractSearchTopicsFromQuestion(qText = '', courseName = '') {
+  // Handle "Use <Tool> and create/design (given) below <Target> (in it)"
+  const useToolMatch = cleanAcademicText(qText).match(
+    /\buse\s+([A-Za-z0-9+#._-]+)\s+(?:and\s+|to\s+)?(?:create|design|draw|make|build|develop)\s+(?:given\s+)?(?:below\s+)?(?:following\s+)?([A-Za-z0-9\s/-]+?)(?:\s+in\s+it)?\s*[-:.]*$/i
+  )
+  if (useToolMatch) {
+    const tool = useToolMatch[1].trim()
+    const target = useToolMatch[2].replace(/\b(?:given|below|following|in\s+it)\b/gi, '').replace(/\s+/g, ' ').trim()
+    return [target ? `${tool} ${target}` : tool, tool]
+  }
+
   const withoutParens = cleanAcademicText(qText)
     .replace(/\([^()]*\)/g, ' ')
     .replace(/\n[\s\S]*$/, '') // take first line/sentence before multi-line tables/grammars
     .replace(
-      /^(?:explain|define|describe|discuss|differentiate\s+between|compare\s+and\s+contrast|compare|distinguish\s+between|what\s+is\s+a?|what\s+are\s+the|what\s+are|write\s+a\s+short\s+note\s+on|state\s+and\s+explain|elaborate\s+on|how\s+does|why\s+is|list\s+the\s+advantages\s+of|give\s+an?\s+example\s+of|check\s+following|remove|apply\s+following\s+operations\s+on)\s+/i,
+      /^(?:explain|define|describe|discuss|differentiate\s+between|compare\s+and\s+contrast|compare|distinguish\s+between|what\s+is\s+a?|what\s+are\s+the|what\s+are|write\s+a\s+short\s+note\s+on|state\s+and\s+explain|elaborate\s+on|how\s+does|why\s+is|list\s+the\s+advantages\s+of|give\s+an?\s+example\s+of|check\s+following|remove|apply\s+following\s+operations\s+on|create\s+given\s+below|create\s+below|design\s+below)\s+/i,
       ''
     )
+    .replace(/\b(?:given\s+below|in\s+it)\b\s*[-:.]*$/i, '')
     .replace(/\?(.*)$/, '')
     .trim()
 
@@ -6444,6 +6644,7 @@ export function extractSearchTopicsFromQuestion(qText = '', courseName = '') {
   const firstSentence = withoutParens.split(/[.?]/)[0].trim()
   const withoutTrailing = firstSentence
     .replace(/\b(?:with\s+(?:a\s+)?(?:suitable\s+)?(?:neat\s+)?(?:example|diagram).*|in\s+detail.*|and\s+provide\s+an\s+example.*|and\s+discuss\s+its\s+methods.*|and\s+how\s+it.*|and\s+its\s+advantages.*|and\s+functions\s+of.*)$/i, '')
+    .replace(/\s*[-:]+\s*$/, '')
     .trim()
 
   return [withoutTrailing || firstSentence || courseName || 'Computer Science']
@@ -6660,16 +6861,21 @@ export function synthesizeUniversalAcademicAnswer(
 
   const profile = resolveSubjectVectorProfile(courseName, assignmentName)
   const subjectContext = cleanAcademicText(courseName || profile.label || assignmentName || 'Computer Science & Engineering')
+    .replace(/^(?:sem(?:ester)?\s*[-:]?\s*\d+|lab\s*task\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+)$/i, profile.label || 'Computer Science & Applications')
   const topics = extractSearchTopicsFromQuestion(qClean, subjectContext)
-  const primaryTopic = topics[0] || qClean.slice(0, 70)
+  const primaryTopic = (topics[0] || qClean.slice(0, 70)).replace(/\s*[-:]+\s*$/, '').trim()
 
   return [
     `${primaryTopic} (${subjectContext}):`,
-    `1. Core Concept & Subject Context:\n` +
-      `   In ${subjectContext}, ${primaryTopic} defines the formal principles, structured workflow, and practical implementation required to satisfy the specification "${qClean}".`,
-    `2. Key Technical Points & Implementation:\n` +
-      `   - Follows standard ${subjectContext} rules, modular decomposition, and boundary validation.\n` +
-      `   - Ensures deterministic execution, optimal resource utilization, and verifiable output across all test cases.`
+    `1. Conceptual Definition & Objective:\n` +
+      `   - Within ${subjectContext}, ${primaryTopic} addresses the core principles, structural rules, and operational methodology required to fulfill: "${qClean}".\n` +
+      `   - It establishes a well-defined input-to-output specification with modular components and verifiable properties.`,
+    `2. Step-by-Step Methodology & Architecture:\n` +
+      `   - Step 1 (Requirement & Parameter Setup): Identify the primary parameters, domain constraints, and workspace/environment settings for ${primaryTopic}.\n` +
+      `   - Step 2 (Core Processing & Construction): Apply the standard ${subjectContext} transformation rules, structural operations, and logical composition.\n` +
+      `   - Step 3 (Validation & Output Verification): Verify boundary conditions, formatting standards, and final output accuracy.`,
+    `3. Key Technical Characteristics & Applications:\n` +
+      `   - Ensures modularity, reproducibility, and adherence to university laboratory and theoretical evaluation criteria in ${subjectContext}.`
   ].join('\n\n')
 }
 
