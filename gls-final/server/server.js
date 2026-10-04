@@ -7,6 +7,7 @@ const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 const mongoose = require('mongoose')
 
 const MONGODB_URI = process.env.MONGODB_URI
@@ -98,7 +99,10 @@ function resolveTargetMoodle(req) {
          parsed.hostname === 'glsufcait.org') &&
         parsed.protocol === 'https:'
       ) {
-        return customUrl.replace(/\/+$/, '')
+        if (parsed.hostname === 'www.glsufcait.org' || parsed.hostname === 'glsufcait.org') {
+          return `${parsed.origin}/glsmoodle`
+        }
+        return parsed.origin
       }
     } catch (e) {}
   }
@@ -156,7 +160,7 @@ app.use(helmet({
 }))
 
 // ══════════════════════════════════════════
-// 2. CORS — only allow our own frontend
+// 2. CORS — only allow our own frontend & approved cloud/mobile origins
 // ══════════════════════════════════════════
 const ALLOWED_ORIGINS = new Set(
   [
@@ -164,6 +168,10 @@ const ALLOWED_ORIGINS = new Set(
     'http://127.0.0.1:5173',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'http://localhost',
+    'https://localhost',
     process.env.APP_ORIGIN,
   ].filter(Boolean)
 )
@@ -183,12 +191,13 @@ app.use('/proxy', (req, res, next) => {
         cleanOrigin.endsWith('.onrender.com') ||
         cleanOrigin.endsWith('.railway.app') ||
         cleanOrigin.endsWith('.vercel.app') ||
-        cleanOrigin.endsWith('.netlify.app')
+        cleanOrigin.endsWith('.netlify.app') ||
+        cleanOrigin.endsWith('.hf.space') ||
+        cleanOrigin.endsWith('huggingface.co')
       ) {
         return cb(null, true)
       }
-      // Allow browser and mobile PWA clients safely
-      return cb(null, true)
+      return cb(null, false)
     },
     credentials: true,
   })(req, res, next)
@@ -197,7 +206,7 @@ app.use('/proxy', (req, res, next) => {
 // ══════════════════════════════════════════
 // 3. RATE LIMITING & BRUTE-FORCE DEFENSE
 // ══════════════════════════════════════════
-// Login: relaxed for btech, completely removed for other departments (BCA, MCA, FCAIT)
+// Login: keyed per (username + IP) across all departments so campus Wi-Fi students never lock each other out
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 40,
@@ -209,17 +218,12 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts. Please try again in a few minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    // Remove rate limit for courses other than btech
-    return resolveDept(req) !== 'btech'
-  }
 })
 
-// Account Lockout Tracker against Multi-IP Cluster-Bombing
+// Account Lockout Tracker against Multi-IP Cluster-Bombing (applies to all departments)
 const failedLoginTracker = new Map()
 
-function checkAccountLockout(username, req) {
-  if (req && resolveDept(req) !== 'btech') return false
+function checkAccountLockout(username) {
   const key = String(username).toLowerCase()
   const record = failedLoginTracker.get(key)
   if (record && record.count >= 15) {
@@ -249,16 +253,13 @@ const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 3000,
   keyGenerator: (req) => {
-    const tok = req.query?.wstoken || req.query?.token || req.body?.wstoken || req.body?.token
+    const tok = req.query?.wstoken || req.query?.token || req.body?.wstoken || req.body?.token || req.headers['x-moodle-token']
     return tok ? `api:${tok}` : `api-ip:${req.ip}`
   },
   validate: false,
   message: { error: 'Rate limit exceeded. Slow down.' },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => {
-    return resolveDept(req) !== 'btech'
-  }
 })
 
 // Upload: keyed per student token so 100+ students submitting assignments simultaneously never collide
@@ -271,9 +272,6 @@ const uploadLimiter = rateLimit({
   },
   validate: false,
   message: { error: 'Too many upload attempts. Try again later.' },
-  skip: (req) => {
-    return resolveDept(req) !== 'btech'
-  }
 })
 
 // Dino Game Score Submission: 20 per 5 minutes per IP
@@ -283,8 +281,27 @@ const dinoLimiter = rateLimit({
   message: { error: 'Too many score submissions. Slow down.' },
 })
 
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+// Profile Likes Rate Limiter: 30 per 5 minutes per IP
+const likeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: { error: 'Too many like requests. Slow down.' },
+})
+
+// Bobby AI Solver Proxy Rate Limiter: 60 per 5 minutes per token/IP
+const bobbyAiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  keyGenerator: (req) => {
+    const tok = req.headers['x-moodle-token'] || req.query?.token || req.body?.token
+    return tok ? `bobby:${tok}` : `bobby-ip:${req.ip}`
+  },
+  validate: false,
+  message: { error: 'Too many AI solver requests. Please wait a moment.' },
+})
+
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // Strict File Upload Filter against Viruses, Executables, Shells, Double Extensions & Zip Bombs
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'txt'])
@@ -443,7 +460,7 @@ function sanitizeParams(rawParamsObj) {
 // 5. TOKEN VALIDATION MIDDLEWARE
 // ══════════════════════════════════════════
 function requireToken(req, res, next) {
-  const token = req.query.wstoken || req.query.token || req.body?.wstoken || req.body?.token
+  const token = req.query.wstoken || req.query.token || req.body?.wstoken || req.body?.token || req.headers['x-moodle-token']
   if (!token || typeof token !== 'string' || token.length < 10) {
     return res.status(401).json({ error: 'Missing or invalid token' })
   }
@@ -452,6 +469,47 @@ function requireToken(req, res, next) {
     return res.status(401).json({ error: 'Malformed token' })
   }
   next()
+}
+
+// Helper: Check if a URL belongs to an approved GLS Moodle domain over HTTPS
+function isAllowedMoodleUrl(urlObj) {
+  if (!urlObj || urlObj.protocol !== 'https:') return false
+  return (
+    urlObj.hostname.endsWith('.glsmoodle.in') ||
+    urlObj.hostname === 'glsmoodle.in' ||
+    urlObj.hostname === 'www.glsufcait.org' ||
+    urlObj.hostname === 'glsufcait.org'
+  )
+}
+
+// Helper: Enforce safe file download headers to prevent Stored/Reflected XSS
+const SAFE_INLINE_MIMES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+  'text/plain'
+]
+function applySafeFileHeaders(res, rawContentType, contentDisposition, fallbackFilename = 'download') {
+  const cleanType = String(rawContentType || 'application/octet-stream').toLowerCase().split(';')[0].trim()
+  const isSafeInline = SAFE_INLINE_MIMES.includes(cleanType)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+  if (isSafeInline) {
+    res.setHeader('Content-Type', rawContentType || cleanType)
+    if (contentDisposition) {
+      res.setHeader('Content-Disposition', contentDisposition)
+    }
+  } else {
+    res.setHeader('Content-Type', 'application/octet-stream')
+    res.setHeader(
+      'Content-Disposition',
+      contentDisposition && /^attachment/i.test(contentDisposition)
+        ? contentDisposition
+        : `attachment; filename="${encodeURIComponent(fallbackFilename)}"`
+    )
+  }
 }
 
 // ══════════════════════════════════════════
@@ -487,8 +545,8 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Invalid username format' })
     }
 
-    // Account level lockout check (protects against multi-IP cluster bombing for btech)
-    if (checkAccountLockout(cleanUser, req)) {
+    // Account level lockout check (protects against multi-IP cluster bombing across all departments)
+    if (checkAccountLockout(cleanUser)) {
       return res.status(429).json({ error: 'Account temporarily locked due to multiple failed login attempts. Try again in 15 minutes.' })
     }
 
@@ -528,7 +586,7 @@ app.post('/proxy/token', loginLimiter, async (req, res) => {
     res.json(data)
   } catch (e) {
     console.error('[LOGIN ERROR]', e.message)
-    res.status(500).json({ error: 'Login service unavailable: ' + e.message })
+    res.status(500).json({ error: 'Login service temporarily unavailable. Please try again.' })
   }
 })
 
@@ -559,7 +617,7 @@ app.get('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (r
     res.json(data)
   } catch (e) {
     console.log('[API ERROR]', e.message)
-    res.status(500).json({ error: 'API request failed', message: e.message })
+    res.status(500).json({ error: 'API request failed' })
   }
 })
 
@@ -594,7 +652,7 @@ app.post('/proxy/api', apiLimiter, requireToken, requireAllowedFunction, async (
     res.json(data)
   } catch (e) {
     console.log('[API ERROR]', e.message)
-    res.status(500).json({ error: 'API request failed', message: e.message })
+    res.status(500).json({ error: 'API request failed' })
   }
 })
 
@@ -638,7 +696,7 @@ app.post('/proxy/feedback', apiLimiter, requireToken, async (req, res) => {
 // ── File upload — rate-limited, token-required
 app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
   try {
-    const token = req.body?.token || req.query?.token
+    const token = req.body?.token || req.query?.token || req.headers['x-moodle-token']
     if (!token || !/^[a-f0-9]{32}$/i.test(token)) {
       return res.status(401).json({ error: 'Invalid token' })
     }
@@ -674,7 +732,7 @@ app.post('/proxy/upload', uploadLimiter, upload.any(), async (req, res) => {
   }
 })
 
-// ── Proxy file downloader — stream Moodle files cleanly with token and CORS bypass
+// ── Proxy file downloader — stream Moodle files cleanly with SSRF & XSS protection
 app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
   try {
     const rawUrl = req.query.url
@@ -689,45 +747,62 @@ app.get('/proxy/file', apiLimiter, requireToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid file URL' })
     }
 
-    // SSRF protection: only allow downloads from approved GLS domains
-    if (
-      !parsed.hostname.endsWith('.glsmoodle.in') &&
-      parsed.hostname !== 'glsmoodle.in' &&
-      parsed.hostname !== 'www.glsufcait.org' &&
-      parsed.hostname !== 'glsufcait.org'
-    ) {
+    // SSRF protection: only allow downloads from approved GLS domains over HTTPS
+    if (!isAllowedMoodleUrl(parsed)) {
       return res.status(403).json({ error: 'Unauthorized file download host' })
     }
 
     // Ensure token is attached if not present
-    const token = req.query.wstoken || req.query.token
+    const token = req.query.wstoken || req.query.token || req.headers['x-moodle-token']
     if (token && !parsed.searchParams.has('token')) {
       parsed.searchParams.set('token', token)
     }
 
-    const r = await fetch(parsed.toString(), {
-      headers: {
-        'User-Agent': 'Moodle1.1-Proxy/1.0',
-      },
-      timeout: 30000
-    })
+    // Follow redirects manually (max 3 hops) and verify every hop stays on approved GLS domains
+    let currentUrl = parsed
+    let r = null
+    for (let hop = 0; hop < 3; hop++) {
+      r = await fetch(currentUrl.toString(), {
+        headers: {
+          'User-Agent': 'Moodle1.1-Proxy/1.0',
+        },
+        redirect: 'manual',
+        timeout: 30000
+      })
 
-    if (!r.ok) {
-      return res.status(r.status).json({ error: `Failed to fetch file from Moodle (${r.status})` })
+      if (r.status >= 300 && r.status < 400) {
+        const location = r.headers.get('location')
+        if (!location) break
+        let nextUrl
+        try {
+          nextUrl = new URL(location, currentUrl)
+        } catch {
+          return res.status(400).json({ error: 'Invalid redirect URL' })
+        }
+        if (!isAllowedMoodleUrl(nextUrl)) {
+          return res.status(403).json({ error: 'Unauthorized redirect host blocked' })
+        }
+        currentUrl = nextUrl
+        continue
+      }
+      break
+    }
+
+    if (!r || !r.ok) {
+      const status = r ? r.status : 502
+      return res.status(status).json({ error: `Failed to fetch file from Moodle (${status})` })
     }
 
     const contentType = r.headers.get('content-type') || 'application/octet-stream'
-    res.setHeader('Content-Type', contentType)
     const contentDisposition = r.headers.get('content-disposition')
-    if (contentDisposition) {
-      res.setHeader('Content-Disposition', contentDisposition)
-    }
+    const urlFilename = decodeURIComponent(currentUrl.pathname.split('/').pop() || 'document')
+    applySafeFileHeaders(res, contentType, contentDisposition, urlFilename)
 
     // Stream file response
     r.body.pipe(res)
   } catch (e) {
     console.error('[PROXY FILE ERROR]', e.message)
-    res.status(500).json({ error: 'File download failed', message: e.message })
+    res.status(500).json({ error: 'File download failed' })
   }
 })
 
@@ -925,7 +1000,7 @@ app.post('/proxy/bobby/solve', apiLimiter, requireToken, async (req, res) => {
     return res.json({ success: true, questions: resolvedQuestions })
   } catch (e) {
     console.error('[BOBBY SOLVE ERROR]', e.message)
-    res.status(200).json({ success: false, error: e.message, questions: [] })
+    res.status(200).json({ success: false, error: 'Solver service temporarily unavailable', questions: [] })
   }
 })
 
@@ -1046,7 +1121,7 @@ app.get('/proxy/dino/leaderboard', async (req, res) => {
   }
 })
 
-app.post('/proxy/dino/score', dinoLimiter, async (req, res) => {
+app.post('/proxy/dino/score', dinoLimiter, requireToken, async (req, res) => {
   try {
     const { username, score } = req.body
     if (!username || typeof score !== 'number' || !Number.isInteger(score)) {
@@ -1111,7 +1186,6 @@ const likesFilePath = path.join(__dirname, 'likes.json')
 
 async function getLikesData(targetUser = 'a24cse057', currentUsername = '') {
   let count = 0
-  let likers = []
   let hasLiked = false
   const targetLower = targetUser.toLowerCase()
   const currentLower = currentUsername.toLowerCase()
@@ -1120,11 +1194,10 @@ async function getLikesData(targetUser = 'a24cse057', currentUsername = '') {
     try {
       const records = await Like.find({ targetUser: targetLower }).lean()
       count = records.length
-      likers = records.map(r => r.likedBy)
       if (currentLower) {
         hasLiked = records.some(r => r.likedBy?.toLowerCase() === currentLower)
       }
-      return { count, hasLiked, likers }
+      return { count, hasLiked }
     } catch (e) {
       console.error('MongoDB getLikes failed, using fallback:', e)
     }
@@ -1139,12 +1212,11 @@ async function getLikesData(targetUser = 'a24cse057', currentUsername = '') {
 
   const targetLikes = localLikes.filter(item => item.targetUser?.toLowerCase() === targetLower)
   count = targetLikes.length
-  likers = targetLikes.map(item => item.likedBy)
   if (currentLower) {
     hasLiked = targetLikes.some(item => item.likedBy?.toLowerCase() === currentLower)
   }
 
-  return { count, hasLiked, likers }
+  return { count, hasLiked }
 }
 
 app.get('/proxy/likes', async (req, res) => {
@@ -1159,7 +1231,7 @@ app.get('/proxy/likes', async (req, res) => {
   }
 })
 
-app.post('/proxy/like', async (req, res) => {
+app.post('/proxy/like', likeLimiter, requireToken, async (req, res) => {
   try {
     const { likedBy, targetUser = 'a24cse057' } = req.body
     if (!likedBy || typeof likedBy !== 'string' || (targetUser && typeof targetUser !== 'string')) {
@@ -1196,6 +1268,9 @@ app.post('/proxy/like', async (req, res) => {
     const exists = localLikes.some(x => x.targetUser?.toLowerCase() === targetLower && x.likedBy?.toLowerCase() === likerLower)
     if (!exists) {
       localLikes.push({ targetUser: cleanTarget, likedBy: cleanLiker, timestamp: new Date().toISOString() })
+      if (localLikes.length > 5000) {
+        localLikes = localLikes.slice(-5000)
+      }
       try {
         fs.writeFileSync(likesFilePath, JSON.stringify(localLikes, null, 2), 'utf8')
       } catch (e) {
@@ -1256,14 +1331,18 @@ async function getUserStorageFiles(username) {
   return { usedBytes, quotaBytes: 1048576, files }
 }
 
-// ── GET User Storage Status & File List
-app.get('/proxy/storage', async (req, res) => {
+// ── GET User Storage Status & File List (Authenticated)
+app.get('/proxy/storage', apiLimiter, requireToken, async (req, res) => {
   try {
     const username = req.query.username
     if (!username || typeof username !== 'string') {
       return res.status(400).json({ error: 'Username required' })
     }
-    const data = await getUserStorageFiles(username)
+    const cleanUser = String(username).trim()
+    if (!cleanUser || !/^[a-zA-Z0-9_@.\-]+$/.test(cleanUser)) {
+      return res.status(400).json({ error: 'Invalid username format' })
+    }
+    const data = await getUserStorageFiles(cleanUser)
     res.json(data)
   } catch (e) {
     console.error('Storage info error:', e)
@@ -1271,9 +1350,14 @@ app.get('/proxy/storage', async (req, res) => {
   }
 })
 
-// ── POST User Storage Upload (Max 1 MB Total User Quota + Security Filters)
+// ── POST User Storage Upload (Max 1 MB Total User Quota + Auth + Security Filters)
 app.post('/proxy/storage/upload', uploadLimiter, upload.single('file'), async (req, res) => {
   try {
+    const token = req.body?.token || req.query?.token || req.headers['x-moodle-token']
+    if (!token || typeof token !== 'string' || !/^[a-f0-9]{32}$/i.test(token)) {
+      return res.status(401).json({ error: 'Missing or invalid token' })
+    }
+
     const { username } = req.body || {}
     if (!username || typeof username !== 'string') {
       return res.status(400).json({ error: 'Username required' })
@@ -1326,7 +1410,7 @@ app.post('/proxy/storage/upload', uploadLimiter, upload.single('file'), async (r
     }
 
     const fileBase64 = file.buffer.toString('base64')
-    let savedId = Date.now().toString()
+    let savedId = crypto.randomUUID()
 
     if (isMongoConnected) {
       try {
@@ -1373,10 +1457,11 @@ app.post('/proxy/storage/upload', uploadLimiter, upload.single('file'), async (r
   }
 })
 
-// ── GET User Storage File Download
-app.get('/proxy/storage/download/:fileId', async (req, res) => {
+// ── GET User Storage File Download (Authenticated + Ownership Verified + XSS Hardened)
+app.get('/proxy/storage/download/:fileId', apiLimiter, requireToken, async (req, res) => {
   try {
     const fileId = req.params.fileId
+    const reqUsername = typeof req.query.username === 'string' ? req.query.username.trim().toLowerCase() : ''
     if (!fileId) return res.status(400).json({ error: 'File ID required' })
 
     let record = null
@@ -1399,8 +1484,15 @@ app.get('/proxy/storage/download/:fileId', async (req, res) => {
       return res.status(404).json({ error: 'File not found' })
     }
 
+    // Verify file ownership to prevent Horizontal Privilege Escalation (IDOR)
+    if (reqUsername && record.username && record.username.toLowerCase() !== reqUsername) {
+      return res.status(403).json({ error: 'Unauthorized access to this file' })
+    }
+
     const fileBuf = Buffer.from(record.fileData, 'base64')
-    res.setHeader('Content-Type', record.mimetype || 'application/octet-stream')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+    res.setHeader('Content-Type', 'application/octet-stream')
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(record.filename)}"`)
     res.send(fileBuf)
   } catch (e) {
@@ -1409,12 +1501,12 @@ app.get('/proxy/storage/download/:fileId', async (req, res) => {
   }
 })
 
-// ── DELETE User Storage File
-app.delete('/proxy/storage/:fileId', async (req, res) => {
+// ── DELETE User Storage File (Authenticated + Ownership Verified)
+app.delete('/proxy/storage/:fileId', apiLimiter, requireToken, async (req, res) => {
   try {
     const fileId = req.params.fileId
     const username = req.query.username
-    if (!fileId || !username) {
+    if (!fileId || !username || typeof username !== 'string') {
       return res.status(400).json({ error: 'File ID and username required' })
     }
     const cleanUser = String(username).trim().toLowerCase()
@@ -1442,22 +1534,35 @@ app.delete('/proxy/storage/:fileId', async (req, res) => {
 })
 
 // ── POST Pollinations AI Proxy (Open-Source Text AI for Bobby Assignment Solver)
-// Includes sequential mutex + retry on HTTP 402/429 + in-memory cache so concurrent student requests never fail
+// Includes sequential mutex + retry on HTTP 402/429 + in-memory cache + queue cap so concurrent student requests never starve
 const bobbyAiCache = new Map()
 const bobbyAiInFlight = new Map()
 let bobbyAiSerialQueue = Promise.resolve()
 let bobbyAiLastCallTime = 0
+let bobbyAiPendingCount = 0
+const MAX_BOBBY_QUEUE_DEPTH = 25
 
 function enqueueBobbyAiTask(fn) {
-  const next = bobbyAiSerialQueue.then(fn, fn)
+  bobbyAiPendingCount++
+  const wrapped = async () => {
+    try {
+      return await fn()
+    } finally {
+      bobbyAiPendingCount = Math.max(0, bobbyAiPendingCount - 1)
+    }
+  }
+  const next = bobbyAiSerialQueue.then(wrapped, wrapped)
   bobbyAiSerialQueue = next.catch(() => {})
   return next
 }
 
-app.post('/proxy/bobby-ai', async (req, res) => {
+app.post('/proxy/bobby-ai', bobbyAiLimiter, async (req, res) => {
   try {
     const payload = req.body || {}
     const userMsg = (payload.messages || []).find(m => m.role === 'user')?.content || JSON.stringify(payload)
+    if (typeof userMsg !== 'string' || userMsg.length > 15000) {
+      return res.status(400).json({ error: 'Prompt payload exceeds maximum allowed size' })
+    }
     const cacheKey = String(userMsg).trim().toLowerCase()
 
     if (bobbyAiCache.has(cacheKey)) {
@@ -1471,6 +1576,10 @@ app.post('/proxy/bobby-ai', async (req, res) => {
         res.setHeader('Content-Type', 'text/plain; charset=utf-8')
         return res.send(sharedText)
       }
+    }
+
+    if (bobbyAiPendingCount >= MAX_BOBBY_QUEUE_DEPTH) {
+      return res.status(503).json({ error: 'AI solver queue is busy. Using instant fallback.' })
     }
 
     const fetchPromise = enqueueBobbyAiTask(async () => {

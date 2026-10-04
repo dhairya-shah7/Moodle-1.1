@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { HardDrive, Upload, Trash2, Download, X, AlertTriangle, FileText, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useAuth } from '../context/AuthContext'
 
 const MAX_QUOTA = 1048576 // 1 MB in bytes
 
@@ -12,6 +13,7 @@ function formatBytes(bytes) {
 }
 
 export default function StorageModal({ isOpen, onClose, user }) {
+  const { token } = useAuth()
   const [usedBytes, setUsedBytes] = useState(0)
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(false)
@@ -20,10 +22,12 @@ export default function StorageModal({ isOpen, onClose, user }) {
   const fileInputRef = useRef(null)
 
   const fetchStorage = async () => {
-    if (!user?.username) return
+    if (!user?.username || !token) return
     setLoading(true)
     try {
-      const res = await fetch(`/proxy/storage?username=${encodeURIComponent(user.username)}`)
+      const res = await fetch(`/proxy/storage?username=${encodeURIComponent(user.username)}&token=${encodeURIComponent(token)}`, {
+        headers: { 'x-moodle-token': token }
+      })
       const data = await res.json()
       if (data.usedBytes !== undefined) {
         setUsedBytes(data.usedBytes)
@@ -40,12 +44,12 @@ export default function StorageModal({ isOpen, onClose, user }) {
     if (isOpen) {
       fetchStorage()
     }
-  }, [isOpen, user?.username])
+  }, [isOpen, user?.username, token])
 
   if (!isOpen) return null
 
   const handleUploadFile = async (file) => {
-    if (!file || !user?.username) return
+    if (!file || !user?.username || !token) return
 
     // Pre-checks
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
@@ -66,10 +70,12 @@ export default function StorageModal({ isOpen, onClose, user }) {
     try {
       const formData = new FormData()
       formData.append('username', user.username)
+      formData.append('token', token)
       formData.append('file', file)
 
       const res = await fetch('/proxy/storage/upload', {
         method: 'POST',
+        headers: { 'x-moodle-token': token },
         body: formData
       })
       const data = await res.json()
@@ -92,8 +98,9 @@ export default function StorageModal({ isOpen, onClose, user }) {
     if (!confirm(`Delete "${filename}" from cloud storage?`)) return
     const toastId = toast.loading('Deleting file...')
     try {
-      const res = await fetch(`/proxy/storage/${fileId}?username=${encodeURIComponent(user.username)}`, {
-        method: 'DELETE'
+      const res = await fetch(`/proxy/storage/${fileId}?username=${encodeURIComponent(user.username)}&token=${encodeURIComponent(token || '')}`, {
+        method: 'DELETE',
+        headers: { 'x-moodle-token': token || '' }
       })
       const data = await res.json()
       if (data.success) {
@@ -313,7 +320,7 @@ export default function StorageModal({ isOpen, onClose, user }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   <a
-                    href={`/proxy/storage/download/${f.id}`}
+                    href={`/proxy/storage/download/${f.id}?username=${encodeURIComponent(user?.username || '')}&token=${encodeURIComponent(token || '')}`}
                     download={f.filename}
                     style={{
                       background: 'var(--surface3)',

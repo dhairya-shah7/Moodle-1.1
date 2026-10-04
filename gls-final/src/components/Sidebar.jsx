@@ -32,7 +32,7 @@ const ROLE_COLORS = {
 }
 
 export default function Sidebar({ badges = {} }) {
-  const { user, logout, isFaculty, getMoodleUrl, department } = useAuth()
+  const { user, token, logout, isFaculty, getMoodleUrl, department } = useAuth()
   const { isDark, toggle } = useTheme()
   const navigate = useNavigate()
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -68,8 +68,11 @@ export default function Sidebar({ badges = {} }) {
     try {
       const res = await fetch('/proxy/like', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ likedBy: user.username, targetUser: 'a24cse057' })
+        headers: {
+          'Content-Type': 'application/json',
+          'x-moodle-token': token || ''
+        },
+        body: JSON.stringify({ likedBy: user.username, targetUser: 'a24cse057', token: token || '' })
       }).then(r => r.json())
 
       if (res.success) {

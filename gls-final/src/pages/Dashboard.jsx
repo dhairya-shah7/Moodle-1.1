@@ -131,10 +131,14 @@ function DinoGame({ user }) {
   const submitScore = async (username, newScore) => {
     if (!username) return
     try {
+      const storedToken = localStorage.getItem('moodle_token') || ''
       const res = await fetch('/proxy/dino/score', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, score: newScore })
+        headers: {
+          'Content-Type': 'application/json',
+          'x-moodle-token': storedToken
+        },
+        body: JSON.stringify({ username, score: newScore, token: storedToken })
       })
       if (res.ok) {
         const data = await res.json()
