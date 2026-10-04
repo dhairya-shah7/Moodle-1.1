@@ -9,6 +9,7 @@ import {
   parseQuestions,
   solveMathOrStatsQuestion,
   fetchDynamicAiAnswer,
+  fetchPollinationsBatchAnswers,
   fetchWikipediaFactualAnswer,
   synthesizeUniversalAcademicAnswer,
   cleanAcademicText,
@@ -391,41 +392,49 @@ function sanitizeForPdfFont(str = '') {
     .replace(/ {3,}/g, '  ')
 }
 
-// Dynamic Question-Specific Resolver (Pollinations AI + Encyclopedia Fallback) with parallel batching
+// Dynamic Question-Specific Resolver (Batch Pollinations AI + Sequential Fallback so HTTP 402 never occurs)
 async function solveWithFactualEncyclopedia(questions, courseName, assignmentName, onProgress, existingMap = {}, localMatches = [], studentSeed = 42) {
   const ansMap = { ...existingMap }
-  const pendingIndices = []
+  const pendingItems = []
 
   for (let idx = 0; idx < questions.length; idx++) {
     if (!localMatches[idx] && !ansMap[idx + 1]) {
-      pendingIndices.push(idx)
+      pendingItems.push({ idx, number: idx + 1, question: questions[idx] })
     }
   }
 
-  const CONCURRENCY = 4
-  for (let i = 0; i < pendingIndices.length; i += CONCURRENCY) {
-    const batch = pendingIndices.slice(i, i + CONCURRENCY)
+  if (pendingItems.length === 0) return ansMap
+
+  // Step 1: Solve pending questions in a single batch AI call (prevents concurrent HTTP 402 rate limits)
+  if (onProgress) {
+    onProgress(`Solving ${pendingItems.length} question${pendingItems.length > 1 ? 's' : ''} with AI...`)
+  }
+  try {
+    const batchSolved = await fetchPollinationsBatchAnswers(pendingItems, courseName, assignmentName, studentSeed)
+    Object.entries(batchSolved).forEach(([qNumStr, ansText]) => {
+      const qNum = Number(qNumStr)
+      if (qNum && ansText) {
+        ansMap[qNum] = cleanAiAnswerText(ansText)
+      }
+    })
+  } catch (err) {
+    console.warn('Batch AI solver warning:', err)
+  }
+
+  // Step 2: Sequentially resolve any remaining unanswered questions one-by-one
+  for (const item of pendingItems) {
+    if (ansMap[item.number]) continue
     if (onProgress) {
-      const firstQ = batch[0] + 1
-      const lastQ = batch[batch.length - 1] + 1
-      onProgress(
-        batch.length === 1
-          ? `Solving Question ${firstQ} of ${questions.length} with AI...`
-          : `Solving Questions ${firstQ}-${lastQ} of ${questions.length} with AI...`
-      )
+      onProgress(`Solving Question ${item.number} of ${questions.length} with AI...`)
     }
-    await Promise.all(
-      batch.map(async idx => {
-        try {
-          const dynamicAnswer = await fetchDynamicAiAnswer(questions[idx], courseName, assignmentName, studentSeed + idx)
-          if (dynamicAnswer) {
-            ansMap[idx + 1] = cleanAiAnswerText(dynamicAnswer)
-          }
-        } catch (err) {
-          console.warn(`Dynamic resolver Q${idx + 1} error:`, err)
-        }
-      })
-    )
+    try {
+      const dynamicAnswer = await fetchDynamicAiAnswer(item.question, courseName, assignmentName, studentSeed + item.idx)
+      if (dynamicAnswer) {
+        ansMap[item.number] = cleanAiAnswerText(dynamicAnswer)
+      }
+    } catch (err) {
+      console.warn(`Dynamic resolver Q${item.number} error:`, err)
+    }
   }
 
   return ansMap
@@ -816,6 +825,7 @@ export default function BobbyAssistant({
   const [generatedFile, setGeneratedFile] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
+  const [showStudentDetails, setShowStudentDetails] = useState(false)
 
   useEffect(() => {
     const nextSubj = cleanCourseSubjectTitle(effectiveAssignment.coursename, effectiveAssignment.name)
@@ -1358,122 +1368,173 @@ export default function BobbyAssistant({
         </div>
       </div>
 
-      {/* Editable Student Details Block (Matches PDF Top Header Format) */}
+      {/* Collapsible Student & PDF Details Header + Form */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 10,
-          marginBottom: 14,
+          marginBottom: 12,
           background: 'var(--surface)',
-          padding: 12,
           borderRadius: 10,
-          border: '1px solid var(--border)'
+          border: '1px solid var(--border)',
+          overflow: 'hidden'
         }}
       >
-        <div>
-          <label style={fieldLabelStyle}>NAME</label>
-          <input
-            type="text"
-            value={studentName}
-            onChange={e => {
-              setStudentName(e.target.value)
-              saveStudentFieldsToStorage({ studentName: e.target.value })
-              setHasUnsavedEdits(true)
+        <div
+          onClick={() => setShowStudentDetails(prev => !prev)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            padding: '10px 12px',
+            cursor: 'pointer',
+            background: 'var(--surface2)'
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {studentName || 'Student'} · {rollNumber || 'Roll No'}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Enroll: {enrollmentNo || 'N/A'} · Sem {semester} ({division}) · {subjectName}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              setShowStudentDetails(prev => !prev)
             }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="Dhairya Shah"
-            style={fieldInputStyle}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>ENROLLMENT NO</label>
-          <input
-            type="text"
-            value={enrollmentNo}
-            onChange={e => {
-              setEnrollmentNo(e.target.value)
-              saveStudentFieldsToStorage({ enrollmentNo: e.target.value })
-              setHasUnsavedEdits(true)
+            style={{
+              padding: '5px 10px',
+              borderRadius: 7,
+              border: '1px solid var(--border)',
+              background: showStudentDetails ? 'var(--accent)' : 'var(--surface)',
+              color: showStudentDetails ? '#fff' : 'var(--accent)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              flexShrink: 0
             }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="202402626010056"
-            style={fieldInputStyle}
-          />
+          >
+            {showStudentDetails ? 'Hide Details' : 'Edit Details'}
+          </button>
         </div>
-        <div>
-          <label style={fieldLabelStyle}>SEM</label>
-          <input
-            type="text"
-            value={semester}
-            onChange={e => {
-              setSemester(e.target.value)
-              saveStudentFieldsToStorage({ semester: e.target.value })
-              setHasUnsavedEdits(true)
+
+        {showStudentDetails && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
+              gap: 10,
+              padding: 12,
+              borderTop: '1px solid var(--border)'
             }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="5"
-            style={fieldInputStyle}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>DIV</label>
-          <input
-            type="text"
-            value={division}
-            onChange={e => {
-              setDivision(e.target.value)
-              saveStudentFieldsToStorage({ division: e.target.value })
-              setHasUnsavedEdits(true)
-            }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="A"
-            style={fieldInputStyle}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>ROLL NO</label>
-          <input
-            type="text"
-            value={rollNumber}
-            onChange={e => {
-              setRollNumber(e.target.value)
-              saveStudentFieldsToStorage({ rollNumber: e.target.value })
-              setHasUnsavedEdits(true)
-            }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="A24CSE057"
-            style={fieldInputStyle}
-          />
-        </div>
-        <div>
-          <label style={fieldLabelStyle}>SUBJECT</label>
-          <input
-            type="text"
-            value={subjectName}
-            onChange={e => {
-              setSubjectName(e.target.value)
-              setHasUnsavedEdits(true)
-            }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="PPL TASK MODULE(1-15)"
-            style={fieldInputStyle}
-          />
-        </div>
-        <div style={{ gridColumn: '1 / -1' }}>
-          <label style={fieldLabelStyle}>PDF Filename</label>
-          <input
-            type="text"
-            value={customFilename}
-            onChange={e => {
-              setCustomFilename(e.target.value)
-              setHasUnsavedEdits(true)
-            }}
-            onBlur={() => handleRebuildPdf(variationCount, false)}
-            placeholder="e.g. A24CSE057_Assignment.pdf"
-            style={fieldInputStyle}
-          />
-        </div>
+          >
+            <div>
+              <label style={fieldLabelStyle}>NAME</label>
+              <input
+                type="text"
+                value={studentName}
+                onChange={e => {
+                  setStudentName(e.target.value)
+                  saveStudentFieldsToStorage({ studentName: e.target.value })
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="Dhairya Shah"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>ENROLLMENT NO</label>
+              <input
+                type="text"
+                value={enrollmentNo}
+                onChange={e => {
+                  setEnrollmentNo(e.target.value)
+                  saveStudentFieldsToStorage({ enrollmentNo: e.target.value })
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="202402626010056"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>SEM</label>
+              <input
+                type="text"
+                value={semester}
+                onChange={e => {
+                  setSemester(e.target.value)
+                  saveStudentFieldsToStorage({ semester: e.target.value })
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="5"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>DIV</label>
+              <input
+                type="text"
+                value={division}
+                onChange={e => {
+                  setDivision(e.target.value)
+                  saveStudentFieldsToStorage({ division: e.target.value })
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="A"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>ROLL NO</label>
+              <input
+                type="text"
+                value={rollNumber}
+                onChange={e => {
+                  setRollNumber(e.target.value)
+                  saveStudentFieldsToStorage({ rollNumber: e.target.value })
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="A24CSE057"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>SUBJECT</label>
+              <input
+                type="text"
+                value={subjectName}
+                onChange={e => {
+                  setSubjectName(e.target.value)
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="PPL TASK MODULE(1-15)"
+                style={fieldInputStyle}
+              />
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={fieldLabelStyle}>PDF Filename</label>
+              <input
+                type="text"
+                value={customFilename}
+                onChange={e => {
+                  setCustomFilename(e.target.value)
+                  setHasUnsavedEdits(true)
+                }}
+                onBlur={() => handleRebuildPdf(variationCount, false)}
+                placeholder="e.g. A24CSE057_Assignment.pdf"
+                style={fieldInputStyle}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Status Views */}
@@ -1543,11 +1604,9 @@ export default function BobbyAssistant({
           <div
             style={{
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
+              flexDirection: 'column',
               gap: 10,
-              padding: '10px 14px',
+              padding: '10px 12px',
               background: 'var(--surface)',
               borderRadius: 10,
               border: '1px solid var(--border)',
@@ -1556,7 +1615,7 @@ export default function BobbyAssistant({
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               <FileText size={20} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     fontWeight: 700,
@@ -1579,25 +1638,26 @@ export default function BobbyAssistant({
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
                 onClick={() => setIsEditing(prev => !prev)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: 5,
-                  padding: '7px 11px',
+                  padding: '8px 10px',
                   borderRadius: 8,
                   background: isEditing ? 'var(--accent)' : 'var(--surface2)',
                   border: `1px solid ${isEditing ? 'var(--accent)' : 'var(--border)'}`,
                   color: isEditing ? '#fff' : 'var(--text)',
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: 700,
                   cursor: 'pointer'
                 }}
               >
-                <Pencil size={13} /> {isEditing ? 'Viewing Editor' : 'Edit File Content'}
+                <Pencil size={13} /> {isEditing ? 'Close Editor' : 'Edit Answers'}
               </button>
               <button
                 type="button"
@@ -1605,8 +1665,9 @@ export default function BobbyAssistant({
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: 6,
-                  padding: '7px 12px',
+                  padding: '8px 10px',
                   borderRadius: 8,
                   background: 'var(--surface2)',
                   border: '1px solid var(--border)',
@@ -1635,25 +1696,26 @@ export default function BobbyAssistant({
               <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                  flexWrap: 'wrap',
-                  gap: 8
+                  flexDirection: 'column',
+                  gap: 8,
+                  marginBottom: 12,
+                  paddingBottom: 10,
+                  borderBottom: '1px solid var(--border)'
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--accent)' }}>
-                  ✏️ Edit Questions & Answers Before Submitting
+                <div style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--accent)' }}>
+                  ✏️ Edit Questions & Answers ({qaList.length})
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <button
                     type="button"
                     onClick={handleAddQuestion}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 4,
-                      padding: '5px 10px',
+                      padding: '7px 10px',
                       borderRadius: 7,
                       border: '1px solid var(--border)',
                       background: 'var(--surface2)',
@@ -1671,8 +1733,9 @@ export default function BobbyAssistant({
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: 5,
-                      padding: '5px 12px',
+                      padding: '7px 10px',
                       borderRadius: 7,
                       border: 'none',
                       background: 'var(--accent)',
@@ -1687,20 +1750,26 @@ export default function BobbyAssistant({
                 </div>
               </div>
 
-              <div style={{ maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
+              <div
+                style={
+                  embeddedInDrawer
+                    ? { display: 'flex', flexDirection: 'column', gap: 10 }
+                    : { maxHeight: 380, overflowY: 'auto', paddingRight: 4 }
+                }
+              >
                 {qaList.map((item, idx) => (
                   <div
                     key={idx}
                     style={{
                       background: 'var(--surface2)',
                       border: '1px solid var(--border)',
-                      borderRadius: 8,
+                      borderRadius: 9,
                       padding: 10,
-                      marginBottom: 10
+                      marginBottom: embeddedInDrawer ? 0 : 10
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontWeight: 700, fontSize: 11.5, color: 'var(--accent)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
+                      <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--accent)' }}>
                         Question {idx + 1}
                       </span>
                       {qaList.length > 1 && (
@@ -1711,12 +1780,12 @@ export default function BobbyAssistant({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 4,
-                            padding: '3px 7px',
+                            padding: '4px 8px',
                             borderRadius: 6,
                             border: '1px solid rgba(239,68,68,0.3)',
                             background: 'rgba(239,68,68,0.08)',
                             color: '#ef4444',
-                            fontSize: 10.5,
+                            fontSize: 11,
                             fontWeight: 600,
                             cursor: 'pointer'
                           }}
@@ -1725,25 +1794,28 @@ export default function BobbyAssistant({
                         </button>
                       )}
                     </div>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={2}
                       value={item.question}
                       onChange={e => handleQuestionChange(idx, e.target.value)}
                       style={{
                         width: '100%',
-                        padding: '7px 9px',
+                        padding: '8px 9px',
                         borderRadius: 6,
                         border: '1px solid var(--border)',
                         background: 'var(--surface)',
                         color: 'var(--text)',
                         fontWeight: 600,
-                        fontSize: 12,
+                        fontSize: 13,
+                        lineHeight: 1.4,
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
                         marginBottom: 8,
                         boxSizing: 'border-box'
                       }}
                     />
                     <textarea
-                      rows={6}
+                      rows={5}
                       value={item.answer}
                       onChange={e => handleAnswerChange(idx, e.target.value)}
                       style={{
@@ -1753,7 +1825,7 @@ export default function BobbyAssistant({
                         border: '1px solid var(--border)',
                         background: 'var(--surface)',
                         color: 'var(--text)',
-                        fontSize: 12,
+                        fontSize: 13,
                         lineHeight: 1.45,
                         fontFamily: 'inherit',
                         resize: 'vertical',
@@ -1767,14 +1839,13 @@ export default function BobbyAssistant({
           ) : (
             <div
               style={{
-                maxHeight: 220,
-                overflowY: 'auto',
+                ...(embeddedInDrawer ? {} : { maxHeight: 280, overflowY: 'auto' }),
                 background: 'var(--surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 10,
                 padding: '10px 12px',
                 marginBottom: 12,
-                fontSize: 12
+                fontSize: 12.5
               }}
             >
               <div
@@ -1782,11 +1853,13 @@ export default function BobbyAssistant({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginBottom: 6
+                  marginBottom: 8,
+                  paddingBottom: 6,
+                  borderBottom: '1px solid var(--border)'
                 }}
               >
                 <span style={{ fontWeight: 700, fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase' }}>
-                  Generated Solution Preview ({qaList.length} Questions)
+                  Solution Preview ({qaList.length} Questions)
                 </span>
                 <button
                   type="button"
@@ -1795,21 +1868,21 @@ export default function BobbyAssistant({
                     background: 'none',
                     border: 'none',
                     color: 'var(--accent)',
-                    fontSize: 11.5,
+                    fontSize: 12,
                     fontWeight: 700,
                     cursor: 'pointer',
                     padding: 0
                   }}
                 >
-                  ✏️ Click to Edit
+                  ✏️ Tap to Edit
                 </button>
               </div>
               {qaList.map((item, idx) => (
                 <div key={idx} style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: 3 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: 4, fontSize: 12.5 }}>
                     Q{idx + 1}. {item.question}
                   </div>
-                  <div style={{ color: 'var(--text2)', whiteSpace: 'pre-line', fontSize: 11.5, lineHeight: 1.45 }}>
+                  <div style={{ color: 'var(--text2)', whiteSpace: 'pre-line', fontSize: 12, lineHeight: 1.45 }}>
                     {item.answer}
                   </div>
                 </div>

@@ -204,18 +204,18 @@ export default function AssistantWidget() {
       {isOpen && (
         <div style={{
           position: 'fixed',
-          bottom: 74,
-          right: 14,
-          width: 'calc(100vw - 28px)',
-          maxWidth: activeTab === 'solver' ? 540 : 400,
-          height: activeTab === 'solver' ? 'min(540px, calc(100dvh - 156px))' : 'min(450px, calc(100dvh - 156px))',
-          maxHeight: 'calc(100vh - 156px)',
+          bottom: 70,
+          right: 10,
+          width: 'calc(100vw - 20px)',
+          maxWidth: activeTab === 'solver' ? 560 : 410,
+          height: activeTab === 'solver' ? 'min(680px, calc(100dvh - 88px))' : 'min(480px, calc(100dvh - 100px))',
+          maxHeight: 'calc(100dvh - 88px)',
           background: 'var(--surface)',
           border: '1px solid var(--border)',
-          borderRadius: 20,
-          boxShadow: '0 20px 44px rgba(0,0,0,0.38)',
+          borderRadius: 18,
+          boxShadow: '0 20px 44px rgba(0,0,0,0.45)',
           backdropFilter: 'blur(16px)',
-          zIndex: 9999,
+          zIndex: 10002,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -303,7 +303,8 @@ export default function AssistantWidget() {
             gap: 6,
             padding: '8px 12px',
             background: 'var(--surface2)',
-            borderBottom: '1px solid var(--border)'
+            borderBottom: '1px solid var(--border)',
+            flexShrink: 0
           }}>
             <button
               type="button"
@@ -348,7 +349,7 @@ export default function AssistantWidget() {
           </div>
 
           {activeTab === 'solver' ? (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '12px', display: 'flex', flexDirection: 'column' }}>
               {bobbySession?.assignment || bobbySession?.attachmentFile || bobbySession?.localFile ? (
                 <BobbyAssistant
                   key={bobbySession?.sessionId || 'default-solver'}

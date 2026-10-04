@@ -7001,6 +7001,194 @@ function solveUniversitySubjectQuestion(qClean = '', courseName = '', assignment
     ].join('\n\n')
   }
 
+  // DIP: Contrast Stretching (with or without diagram)
+  if (qLower.includes('contrast stretching')) {
+    if (qLower.includes('diagram') || qLower.includes('explain')) {
+      return [
+        `Contrast Stretching is a piecewise-linear point transformation technique that expands a narrow range of intensity levels [r_min, r_max] in a low-contrast image to span the full dynamic intensity range [0, L - 1] (e.g., 0 to 255).`,
+        `Mathematical Formula:\n` +
+          `   s = T(r) = ( (r - r_min) / (r_max - r_min) ) * (L - 1)\n` +
+          `   Using control points (r1, s1) and (r2, s2):\n` +
+          `   - For 0 <= r < r1       : s = (s1 / r1) * r\n` +
+          `   - For r1 <= r <= r2     : s = ((s2 - s1) / (r2 - r1)) * (r - r1) + s1\n` +
+          `   - For r2 < r <= (L - 1) : s = ((L - 1 - s2) / (L - 1 - r2)) * (r - r2) + s2`,
+        `Labeled Transformation Diagram:\n` +
+          `   Output Intensity (s)\n` +
+          `   L-1 |                      . (L-1, L-1)\n` +
+          `       |                    /\n` +
+          `    s2 |                  * (r2, s2)\n` +
+          `       |                 /\n` +
+          `       |                /   <-- Steep slope expands contrast in [r1, r2]\n` +
+          `    s1 |               * (r1, s1)\n` +
+          `       |          . ' \n` +
+          `     0 +----------+----+------+----> Input Intensity (r)\n` +
+          `       0         r1   r2     L-1\n` +
+          `   (Special Cases: If r1 = s1 and r2 = s2, the transformation is linear identity; if r1 = r2, s1 = 0, and s2 = L - 1, it becomes a thresholding binary function.)`
+      ].join('\n\n')
+    }
+    return [
+      `Contrast stretching is an image enhancement technique (piecewise-linear point transformation) that improves the contrast of a low-contrast image by stretching its narrow range of gray-level intensities [r_min, r_max] to cover the entire available dynamic range [0, L - 1] (such as 0 to 255).`,
+      `Formula: s = ( (r - r_min) / (r_max - r_min) ) * (L - 1), where r is the input pixel intensity and s is the output pixel intensity.`
+    ].join('\n\n')
+  }
+
+  // DIP: Point Processing
+  if (qLower.includes('point processing')) {
+    return [
+      `Point processing (also called intensity transformation or pixel-wise processing) is a spatial domain image enhancement operation in which the output value of each pixel depends ONLY on the input intensity value of that single pixel at the same coordinates, independent of any neighboring pixels.`,
+      `Mathematical Expression:\n` +
+        `   s = T(r)   or   g(x, y) = T( f(x, y) )\n` +
+        `where f(x, y) (or r) is the input pixel intensity, g(x, y) (or s) is the output pixel intensity, and T is the intensity transformation function (such as image negative, log transformation, gamma correction, or contrast stretching).`
+    ].join('\n\n')
+  }
+
+  // DIP: Sharpening Filters
+  if (qLower.includes('sharpening filter')) {
+    return [
+      `Sharpening filters (high-pass spatial filters) are image enhancement filters based on first- and second-order spatial derivatives that highlight fine details, edges, and rapid intensity transitions in an image while attenuating smooth or constant-intensity areas.`,
+      `Example — 3x3 Laplacian Sharpening Filter:\n` +
+        `   del^2 f = f(x+1, y) + f(x-1, y) + f(x, y+1) + f(x, y-1) - 4*f(x, y)\n` +
+        `   Laplacian Mask:\n` +
+        `       [  0  -1   0 ]\n` +
+        `       [ -1   4  -1 ]\n` +
+        `       [  0  -1   0 ]\n` +
+        `   Sharpened Image: g(x, y) = f(x, y) + c * del^2 f(x, y). (Other examples: Sobel, Prewitt, and Roberts gradient operators.)`
+    ].join('\n\n')
+  }
+
+  // DIP: Differentiate Linear Spatial Filter and Non-Linear Spatial Filter
+  if (qLower.includes('linear spatial filter') && qLower.includes('non-linear') || (qLower.includes('linear') && qLower.includes('non-linear') && qLower.includes('filter'))) {
+    return [
+      `Differentiation Between Linear Spatial Filter and Non-Linear Spatial Filter:\n` +
+        `   Parameter            | Linear Spatial Filter                        | Non-Linear Spatial Filter\n` +
+        `   ---------------------+----------------------------------------------+----------------------------------------------\n` +
+        `   1. Operation         | Computes a linear weighted sum of pixels     | Computes a non-linear function (ranking,     \n` +
+        `                        | (sum of products / convolution) in the mask. | sorting, min/max) of pixels in the mask.     \n` +
+        `   2. Formula           | g(x,y) = Sum_{s,t} w(s,t) * f(x+s, y+t)      | Cannot be written as a weighted sum of w*f.  \n` +
+        `   3. Superposition     | Obeys linearity (additivity & homogeneity).  | Does NOT obey superposition or linearity.    \n` +
+        `   4. Edge Preservation | Tends to blur sharp edges during smoothing.  | Preserves sharp edges while removing impulse \n` +
+        `                        |                                              | (salt-and-pepper) noise.                     \n` +
+        `   5. Examples          | Mean (Box) filter, Gaussian filter,          | Median filter, Max filter, Min filter,       \n` +
+        `                        | Laplacian filter.                            | Midpoint filter.`
+    ].join('\n\n')
+  }
+
+  // DIP: What is meant by masking?
+  if (qLower.includes('masking') && !qLower.includes('unsharp')) {
+    return [
+      `In Digital Image Processing, masking (spatial filtering) is the process of sliding a small 2D matrix of coefficients—called a mask, kernel, template, or window w(s, t) (typically of size 3x3 or 5x5)—pixel-by-pixel across an image f(x, y) so that each output pixel g(x, y) is computed from the neighborhood of pixels covered by the mask:\n` +
+        `   g(x, y) = Sum_{s=-a..a} Sum_{t=-b..b} w(s, t) * f(x + s, y + t)\n` +
+        `(It also refers to multiplying an image by a binary ROI mask of 0s and 1s to isolate a specific region of interest while suppressing the rest of the image.)`
+    ].join('\n\n')
+  }
+
+  // DIP: Ideal, Butterworth and Gaussian filter transfer functions
+  if (qLower.includes('transfer function') && (qLower.includes('butterworth') || qLower.includes('gaussian') || qLower.includes('ideal'))) {
+    return [
+      `Let D(u, v) = sqrt( (u - P/2)^2 + (v - Q/2)^2 ) be the distance from point (u, v) to the center of the frequency rectangle, and D0 be the cutoff frequency.`,
+      `1. Ideal Filter Transfer Functions:\n` +
+        `   - Ideal Low-Pass Filter (ILPF)  : H(u, v) = 1 if D(u, v) <= D0,  and  0 if D(u, v) > D0.\n` +
+        `   - Ideal High-Pass Filter (IHPF) : H(u, v) = 0 if D(u, v) <= D0,  and  1 if D(u, v) > D0.\n` +
+        `   - Behavior: Sharp brick-wall cutoff at D0; causes severe ringing artifacts in the spatial domain.`,
+      `2. Butterworth Filter Transfer Functions (of order n):\n` +
+        `   - Butterworth Low-Pass Filter (BLPF)  : H(u, v) = 1 / [ 1 + ( D(u, v) / D0 )^(2n) ]\n` +
+        `   - Butterworth High-Pass Filter (BHPF) : H(u, v) = 1 / [ 1 + ( D0 / D(u, v) )^(2n) ]\n` +
+        `   - Behavior: Smooth transition between passband and stopband controlled by order n; H(u, v) = 0.5 at D(u, v) = D0.`,
+      `3. Gaussian Filter Transfer Functions:\n` +
+        `   - Gaussian Low-Pass Filter (GLPF)  : H(u, v) = exp( - D^2(u, v) / (2 * D0^2) )\n` +
+        `   - Gaussian High-Pass Filter (GHPF) : H(u, v) = 1 - exp( - D^2(u, v) / (2 * D0^2) )\n` +
+        `   - Behavior: Completely smooth bell-shaped response with zero ringing artifacts because the inverse Fourier transform of a Gaussian is also a Gaussian.`
+    ].join('\n\n')
+  }
+
+  // DIP: Differentiate Unsharp Masking and High-Boost Filtering
+  if (qLower.includes('unsharp masking') || qLower.includes('high boost') || qLower.includes('high-boost')) {
+    return [
+      `Both methods sharpen an image by subtracting a blurred (smoothed) version f_blur(x, y) from the original image f(x, y) to obtain a high-frequency mask:\n` +
+        `   g_mask(x, y) = f(x, y) - f_blur(x, y)\n` +
+        `   g(x, y) = f(x, y) + k * g_mask(x, y)`,
+      `Differentiation Between Unsharp Masking and High-Boost Filtering:\n` +
+        `   Parameter            | Unsharp Masking                              | High-Boost Filtering\n` +
+        `   ---------------------+----------------------------------------------+----------------------------------------------\n` +
+        `   1. Weight Factor (k) | Uses weight factor k = 1.                    | Generalization using weight factor k > 1.    \n` +
+        `   2. Mathematical Form | g(x,y) = f(x,y) + [f(x,y) - f_blur(x,y)]     | g(x,y) = f(x,y) + k * [f(x,y) - f_blur(x,y)] \n` +
+        `                        |        = 2*f(x,y) - f_blur(x,y)              |        = (k + 1)*f(x,y) - k*f_blur(x,y)      \n` +
+        `   3. Sharpening Effect | Moderate edge crispening.                    | Stronger high-frequency amplification while  \n` +
+        `                        |                                              | retaining low-frequency background tonality.`
+    ].join('\n\n')
+  }
+
+  // DIP: Image Enhancement in the Spatial Domain
+  if (qLower.includes('image enhancement') && qLower.includes('spatial domain')) {
+    return [
+      `Image Enhancement in the Spatial Domain refers to manipulating the pixel intensities of an image plane directly to make the resulting image more suitable than the original for visual interpretation or specific analysis.`,
+      `Mathematical Model:\n` +
+        `   g(x, y) = T[ f(x, y) ]\n` +
+        `where f(x, y) is the input image, g(x, y) is the enhanced output image, and T is an operator defined over a neighborhood of point (x, y).`,
+      `Two Principal Categories:\n` +
+        `   1. Point Processing (1x1 neighborhood, s = T(r)): Operates on single pixels independently (e.g., Image Negatives, Log Transformation, Power-Law/Gamma Transformation, Contrast Stretching, Histogram Equalization).\n` +
+        `   2. Spatial Filtering / Mask Processing (m x n neighborhood): Operates on a local window of neighboring pixels using a mask/kernel (e.g., Smoothing low-pass filters for noise reduction and Sharpening high-pass filters for edge enhancement).`
+    ].join('\n\n')
+  }
+
+  // DIP: Logarithmic Transformation
+  if (qLower.includes('logarithmic transformation') || (qLower.includes('log transformation') && qLower.includes('image'))) {
+    return [
+      `Logarithmic Transformation is a point processing intensity transformation that maps a narrow range of low (dark) gray-level values in the input image into a wider range of output levels, while compressing the wider range of high (bright) input values.`,
+      `Mathematical Expression:\n` +
+        `   s = c * log(1 + r)\n` +
+        `where:\n` +
+        `   - r is the input pixel intensity (r >= 0),\n` +
+        `   - s is the output pixel intensity,\n` +
+        `   - c is a scaling constant (typically c = (L - 1) / log(1 + r_max)),\n` +
+        `   - 1 is added inside the logarithm so that log(1 + 0) = 0 when r = 0.`
+    ].join('\n\n')
+  }
+
+  // DIP: Power-Law (Gamma) Transformation
+  if (qLower.includes('power-law') || qLower.includes('power law') || qLower.includes('gamma transformation') || qLower.includes('gamma correction')) {
+    return [
+      `Power-Law (Gamma) Transformation is a point processing intensity transformation used to expand dark or bright pixel intensities and to perform gamma correction for display, camera, and printing devices.`,
+      `Mathematical Expression:\n` +
+        `   s = c * (r ^ gamma)    [or s = c * (r + epsilon)^gamma]\n` +
+        `where r is the non-negative input intensity, s is the output intensity, and c and gamma are positive constants:\n` +
+        `   - For gamma < 1 (Fractional Gamma): Expands dark intensity levels and compresses bright levels (brightens dark images).\n` +
+        `   - For gamma > 1: Compresses dark levels and expands bright intensity levels (darkens washed-out images).\n` +
+        `   - For gamma = 1 and c = 1: Reduces to the linear identity transformation (s = r).`
+    ].join('\n\n')
+  }
+
+  // 10. Fundamentals of Computer Organization (FCO) & Computer Architecture (COA)
+  if (
+    (/\b(?:what\s+is\s+(?:a\s+)?processor|explain\s+processor|central\s+processing\s+unit|cpu\b)\b/i.test(qClean) &&
+      !qLower.includes('word processor')) ||
+    (qLower.includes('processor') && (qLower.includes('component') || qLower.includes('alu') || qLower.includes('control unit') || /\bfco\b|computer\s+organization|architecture/i.test(contextLower)))
+  ) {
+    return [
+      `A Processor (Central Processing Unit or CPU) is the primary electronic circuitry of a computer that fetches, decodes, and executes program instructions by performing arithmetic, logical, control, and input/output (I/O) operations.`,
+      `Main Components of a Processor (CPU):\n` +
+        `   1. Arithmetic Logic Unit (ALU): Performs all arithmetic operations (addition, subtraction, multiplication, division) and bitwise logical/comparison operations (AND, OR, NOT, XOR, shift).\n` +
+        `   2. Control Unit (CU): Directs the operation of the processor by fetching instructions from memory, decoding them, and generating timing and control signals for the ALU, registers, and I/O devices.\n` +
+        `   3. Processor Registers: High-speed internal storage locations inside the CPU used to hold operands, intermediate results, and addresses during execution (e.g., Accumulator [AC], Program Counter [PC], Instruction Register [IR], Memory Address Register [MAR], Memory Buffer Register [MBR], and General-Purpose Registers).\n` +
+        `   4. Internal CPU Buses: High-speed data, address, and control pathways connecting the ALU, Control Unit, and Registers.`
+    ].join('\n\n')
+  }
+
+  if (qLower.includes('risc') && qLower.includes('cisc')) {
+    return [
+      `Differentiation Between RISC and CISC Processors:\n` +
+        `   Parameter            | RISC (Reduced Instruction Set Computer)      | CISC (Complex Instruction Set Computer)\n` +
+        `   ---------------------+----------------------------------------------+----------------------------------------------\n` +
+        `   1. Instruction Set   | Small, simple, fixed-length instructions.    | Large, complex, variable-length instructions.\n` +
+        `   2. Execution Time    | Executes in a single clock cycle (CPI ~= 1). | Takes multiple clock cycles per instruction. \n` +
+        `   3. Memory Access     | Load/Store architecture (only LOAD/STORE     | Instructions can manipulate memory operands  \n` +
+        `                        | instructions access memory; others use regs).| directly.                                    \n` +
+        `   4. Control Unit      | Hardwired control unit (faster execution).   | Microprogrammed control unit.                \n` +
+        `   5. Registers & Modes | Large number of registers; few addr. modes.  | Fewer registers; many complex addr. modes.   \n` +
+        `   6. Examples          | ARM, RISC-V, MIPS, Apple M-series.           | Intel x86, AMD x86-64, Motorola 68000.`
+    ].join('\n\n')
+  }
+
   // ══════════════════════════════════════════════════════════════════════════
   // 3B. PUBLISHING MULTIMEDIA TOOLS, INKSCAPE, GIMP & GRAPHIC DESIGN PRACTICALS
   // ══════════════════════════════════════════════════════════════════════════
@@ -7291,6 +7479,128 @@ export function cleanPollinationsOutput(raw = '') {
   return cleanAcademicText(text)
 }
 
+// Sequential queue + rate-limit spacing so Pollinations AI never receives rapid consecutive requests from the same IP (which triggers HTTP 402)
+let pollinationsMutex = Promise.resolve()
+let lastPollinationsCallTime = 0
+
+function runPollinationsSerial(taskFn) {
+  const next = pollinationsMutex.then(taskFn, taskFn)
+  pollinationsMutex = next.catch(() => {})
+  return next
+}
+
+async function postPollinationsWithRetry(payload) {
+  const endpoints = []
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    endpoints.push(`${window.location.origin}/proxy/bobby-ai`)
+  }
+  endpoints.push('https://text.pollinations.ai/')
+
+  for (const url of endpoints) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const elapsed = Date.now() - lastPollinationsCallTime
+        const minGap = attempt > 0 ? 4500 * attempt : 3500
+        if (lastPollinationsCallTime > 0 && elapsed < minGap) {
+          await new Promise(r => setTimeout(r, minGap - elapsed))
+        }
+        lastPollinationsCallTime = Date.now()
+
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 45000)
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            seed: Number((payload.seed || 42) + attempt) % 100000
+          }),
+          signal: controller.signal
+        })
+        clearTimeout(timer)
+        if (res.ok) {
+          const rawText = await res.text()
+          const cleaned = cleanPollinationsOutput(rawText)
+          if (cleaned && cleaned.length > 15 && !/^(?:error|404|502|503|rate\s+limit|\{\s*\})/i.test(cleaned)) {
+            return cleaned
+          }
+        } else if (res.status === 402 || res.status === 429 || res.status >= 500) {
+          continue
+        }
+      } catch {
+        // Retry or move to next endpoint
+      }
+    }
+  }
+  return null
+}
+
+// Batch Pollinations AI Solver — solves up to 28 questions in a single HTTP request to avoid HTTP 402 rate limits
+export async function fetchPollinationsBatchAnswers(items = [], courseName = '', assignmentName = '', studentSeed = 42) {
+  if (!Array.isArray(items) || items.length === 0) return {}
+
+  const results = {}
+  const CHUNK_SIZE = 28
+
+  for (let start = 0; start < items.length; start += CHUNK_SIZE) {
+    const chunk = items.slice(start, start + CHUNK_SIZE)
+    const combinedContext = `${chunk.map(c => c.question).join(' ')} ${courseName} ${assignmentName}`.toLowerCase()
+    const isCodingBatch =
+      /\b(?:python|java|c\+\+|c#|javascript|typescript|php|sql|write\s+a\s+program|write\s+a\s+script)\b/i.test(combinedContext) &&
+      !/\b(?:inkscape|gimp|photoshop|coreldraw|digital\s+image|video\s+processing)\b/i.test(combinedContext)
+
+    const systemPrompt = isCodingBatch
+      ? [
+          `You are an expert university Computer Science professor solving a programming assignment for "${courseName || 'Computer Science'}".`,
+          `Rules:`,
+          `1. Answer EVERY question using its exact marker ===Q<number>=== before the answer.`,
+          `2. For each coding question, write ONLY "Program:" followed by runnable code, then "Output:" followed by the exact console output. No extra explanations or additional details.`,
+          `3. Use plain ASCII characters only (no markdown backticks \`\`\`, no **bold**).`
+        ].join('\n')
+      : [
+          `You are an expert university professor answering questions for "${courseName || 'Computer Science'}".`,
+          `Rules:`,
+          `1. Answer EVERY question using its exact marker ===Q<number>=== on its own line before each answer.`,
+          `2. Provide ONLY the direct, concise answer to what the question asks (definition, formula, comparison, or ASCII diagram if requested).`,
+          `3. Do NOT include any additional details, history, unrequested features/typical-uses sections, or conversational filler.`,
+          `4. Use plain ASCII characters only (no LaTeX backslashes, no markdown **bold**).`
+        ].join('\n')
+
+    const userPrompt = [
+      `Course: ${courseName || 'Computer Science'}`,
+      `Answer each question directly and concisely under its exact ===Q<number>=== marker:`,
+      '',
+      chunk.map(item => `===Q${item.number}===\n${cleanAcademicText(item.question)}`).join('\n\n')
+    ].join('\n')
+
+    const batchRaw = await runPollinationsSerial(() =>
+      postPollinationsWithRetry({
+        model: 'openai',
+        seed: Number(studentSeed + start) % 100000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      })
+    )
+
+    if (batchRaw) {
+      const blocks = batchRaw.split(/===\s*Q(\d+)\s*===/i)
+      for (let b = 1; b < blocks.length; b += 2) {
+        const qNum = Number(blocks[b])
+        const ansBody = cleanPollinationsOutput(blocks[b + 1] || '')
+          .replace(/^(?:Q(?:uestion)?\s*\d+\s*[:.)-]?\s*)/i, '')
+          .trim()
+        if (qNum && ansBody.length > 15) {
+          results[qNum] = ansBody
+        }
+      }
+    }
+  }
+
+  return results
+}
+
 // Open-Source Pollinations AI Solver (https://text.pollinations.ai/) — Free, Zero-Key LLM Engine
 export async function fetchPollinationsAiAnswer(qText, courseName = '', assignmentName = '', studentSeed = 0) {
   const qClean = cleanAcademicText(qText).trim()
@@ -7301,24 +7611,25 @@ export async function fetchPollinationsAiAnswer(qText, courseName = '', assignme
     /\b(?:python|java|c\+\+|c#|javascript|typescript|php|sql|program|script|function|list|tuple|dictionary|dictionaries|set|array|matrix|matrices|string|loop|recursion|class|object|inheritance|exception|file\s+handling|ordereddict|lambda)\b/i.test(
       contextStr
     ) &&
-    !/\b(?:inkscape|gimp|photoshop|coreldraw|food\s+menu|birthday\s+card|visiting\s+card)\b/i.test(contextStr)
+    !/\b(?:inkscape|gimp|photoshop|coreldraw|food\s+menu|birthday\s+card|visiting\s+card|digital\s+image|video\s+processing|spatial\s+filter|point\s+processing|contrast\s+stretching)\b/i.test(
+      contextStr
+    )
 
   const systemPrompt = isCodingQuestion
     ? [
         `You are an expert university Computer Science professor solving a laboratory programming assignment for the course "${courseName || 'Python Programming'}".`,
         `Strict Output Rules:`,
-        `1. Output NO conversational intro or outro (never say "Below is a script", "Sure", or "You can copy-paste").`,
-        `2. Start immediately with "Program:" on the first line, followed by complete, self-contained, runnable code that directly solves EVERY part of the question using concrete sample values.`,
+        `1. Output NO conversational intro, outro, or extra explanation.`,
+        `2. Start immediately with "Program:" on the first line, followed by complete, self-contained, runnable code that directly solves the question.`,
         `3. After the code, write "Output:" on its own line, followed by the exact console output produced when running that code.`,
         `4. Do NOT wrap the code in markdown backticks (\`\`\`). Use plain ASCII characters only.`
       ].join('\n')
     : [
-        `You are an expert university professor solving an academic assignment for the course "${courseName || 'Computer Science'}" (${assignmentName || 'Assignment'}).`,
+        `You are an expert university professor answering an assignment question for the course "${courseName || 'Computer Science'}".`,
         `Strict Output Rules:`,
-        `1. Output NO conversational intro or outro (never say "Here is the solution" or "Sure!").`,
-        `2. Provide a complete, well-structured, step-by-step university exam answer with numbered sections (1., 2., 3.).`,
-        `3. Use plain ASCII notation only (no LaTeX backslashes like \\frac or markdown code fences).`,
-        `4. Directly and accurately solve every requirement of the question.`
+        `1. Answer ONLY what the question asks directly and concisely.`,
+        `2. Do NOT include any additional details, history, unrequested features/uses sections, or conversational filler.`,
+        `3. Use plain ASCII notation only (no LaTeX backslashes like \\frac, no markdown **bold** or code fences).`
       ].join('\n')
 
   const payload = {
@@ -7330,39 +7641,10 @@ export async function fetchPollinationsAiAnswer(qText, courseName = '', assignme
     ]
   }
 
-  // Try direct Pollinations AI endpoint first, with backend proxy fallback
-  const endpoints = ['https://text.pollinations.ai/']
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    endpoints.push(`${window.location.origin}/proxy/bobby-ai`)
-  }
-
-  for (const url of endpoints) {
-    try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 18000)
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      })
-      clearTimeout(timer)
-      if (res.ok) {
-        const rawText = await res.text()
-        const cleaned = cleanPollinationsOutput(rawText)
-        if (cleaned && cleaned.length > 40 && !/^(?:error|404|502|503|rate\s+limit)/i.test(cleaned)) {
-          return cleaned
-        }
-      }
-    } catch {
-      // Try next endpoint or fallback
-    }
-  }
-
-  return null
+  return await runPollinationsSerial(() => postPollinationsWithRetry(payload))
 }
 
-// Hybrid Solver: Verified Deterministic Solvers + Open-Source Pollinations AI + Course Vector / MediaWiki / OpenAlex Fallback
+// Hybrid Solver: Verified Deterministic Solvers + Open-Source Pollinations AI + Course Vector Fallback
 export async function fetchDynamicAiAnswer(qText, courseName = '', assignmentName = '', studentSeed = 0) {
   const localMatch = solveMathOrStatsQuestion(qText, 0, studentSeed, courseName, assignmentName)
   if (localMatch) return localMatch
@@ -7374,50 +7656,48 @@ export async function fetchDynamicAiAnswer(qText, courseName = '', assignmentNam
 }
 
 export async function fetchWikipediaFactualAnswer(qText, courseName = '', assignmentName = '') {
-  // 1. Always check deterministic coding/math/DIP/subject engines first so coding or numerical questions NEVER hit external encyclopedias
+  // 1. Always check deterministic coding/math/DIP/subject engines first
   const localDeterministic = solveMathOrStatsQuestion(qText, 0, 0, courseName, assignmentName)
   if (localDeterministic) return localDeterministic
 
   // 2. Check Moodle Course Material Vector Index (if course syllabus/modules were indexed)
-  const courseVectorHit = queryCourseVectorIndex(qText, courseName, 0.22)
+  const courseVectorHit = queryCourseVectorIndex(qText, courseName, 0.25)
+  if (courseVectorHit) {
+    return cleanAcademicText(courseVectorHit)
+  }
+
   const profile = resolveSubjectVectorProfile(courseName, assignmentName)
   const subjectTag = profile.searchTag || deriveSubjectDomainTag(courseName, assignmentName)
-  const cleanCourseLabel = cleanAcademicText(courseName || profile.label || subjectTag)
-    .replace(/\s*-\s*\d{4}\b/g, '')
-    .trim()
-
   const topics = extractSearchTopicsFromQuestion(qText, courseName)
   const sections = []
   const seenTitles = new Set()
 
-  if (courseVectorHit) {
-    sections.push(`Course Syllabus & Lecture Reference (${cleanCourseLabel}):\n${cleanAcademicText(courseVectorHit)}`)
-  }
-
-  const isComparisonQuestion =
-    /(?:differentiate\s+between|distinguish\s+between|difference\s+between|compare\s+and\s+contrast|compare)\s+([^.?]+?)\s+(?:and|vs\.?|versus)\s+([^.?]+)/i.test(
-      qText
-    ) && topics.length >= 2
-
-  for (const topic of topics.slice(0, 3)) {
+  for (const topic of topics.slice(0, 2)) {
     const cleanTopic = topic
-      .replace(/^(?:explain|define|describe|discuss|what\s+is|write\s+about)\s+/i, '')
+      .replace(/^(?:explain|define|describe|discuss|what\s+is|write\s+about|differentiate)\s+/i, '')
       .replace(/\b\d{4}\b/g, '')
       .trim()
-    if (!cleanTopic || cleanTopic.length < 2) continue
+    if (!cleanTopic || cleanTopic.length < 3) continue
 
-    let topicResolved = false
-
-    // SOURCE A: Category-Verified MediaWiki + BM25 Cosine Vector Gate
     try {
       const scopedQuery = encodeURIComponent(`${cleanTopic} ${subjectTag}`.trim())
-      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${scopedQuery}&utf8=&format=json&origin=*&srlimit=6`
-      let searchRes = await fetch(searchUrl)
-      let searchData = searchRes.ok ? await searchRes.json() : null
-      let hits = (searchData?.query?.search || []).filter(h => isRelevantAcademicWikiHit(h.title, h.snippet))
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${scopedQuery}&utf8=&format=json&origin=*&srlimit=4`
+      const searchRes = await fetch(searchUrl)
+      const searchData = searchRes.ok ? await searchRes.json() : null
+      const hits = (searchData?.query?.search || []).filter(h => isRelevantAcademicWikiHit(h.title, h.snippet))
 
-      // Score all hits with BM25 + Cosine Vector Similarity
-      let rankedHits = hits
+      // Require that the Wikipedia article title shares at least one meaningful word (>= 4 chars) with cleanTopic
+      const topicWords = cleanTopic
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(w => w.length >= 4 && !/^(?:image|video|digital|processing|with|help|neat|labeled|diagram|example|filter|filters|function|write)$/.test(w))
+
+      const rankedHits = hits
+        .filter(h => {
+          const titleLower = (h.title || '').toLowerCase()
+          if (topicWords.length === 0) return true
+          return topicWords.some(w => titleLower.includes(w))
+        })
         .map(h => ({
           ...h,
           vectorScore: scorePassageRelevance({
@@ -7428,112 +7708,30 @@ export async function fetchWikipediaFactualAnswer(qText, courseName = '', assign
             candidateText: cleanAcademicText(h.snippet || '')
           })
         }))
-        .filter(h => h.vectorScore >= 0.08)
+        .filter(h => h.vectorScore >= 0.22)
         .sort((a, b) => b.vectorScore - a.vectorScore)
 
-      let bestHit = rankedHits[0]
-
-      if (!bestHit?.title) {
-        const fallbackUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanTopic)}&utf8=&format=json&origin=*&srlimit=6`
-        searchRes = await fetch(fallbackUrl)
-        searchData = searchRes.ok ? await searchRes.json() : null
-        hits = (searchData?.query?.search || []).filter(h => isRelevantAcademicWikiHit(h.title, h.snippet))
-        rankedHits = hits
-          .map(h => ({
-            ...h,
-            vectorScore: scorePassageRelevance({
-              questionText: `${qText} ${cleanTopic}`,
-              courseName,
-              assignmentName,
-              candidateTitle: h.title,
-              candidateText: cleanAcademicText(h.snippet || '')
-            })
-          }))
-          .filter(h => h.vectorScore >= 0.10)
-          .sort((a, b) => b.vectorScore - a.vectorScore)
-        bestHit = rankedHits[0]
-      }
-
+      const bestHit = rankedHits[0]
       if (bestHit?.title && !seenTitles.has(bestHit.title.toLowerCase())) {
-        const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts|categories&exchars=1800&explaintext=1&cllimit=15&titles=${encodeURIComponent(bestHit.title)}&format=json&origin=*`
+        const extractUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&exchars=650&explaintext=1&titles=${encodeURIComponent(bestHit.title)}&format=json&origin=*`
         const extractRes = await fetch(extractUrl)
         if (extractRes.ok) {
           const extractData = await extractRes.json()
           const pages = extractData?.query?.pages || {}
           const pageObj = Object.values(pages)[0]
-          const categories = (pageObj?.categories || []).map(c => c.title || '')
-          const fullExtract = cleanAcademicText(pageObj?.extract || '')
-            .replace(/\n{3,}/g, '\n\n')
+          // Keep only the concise introductory definition paragraph (no History:, no vertical broken math)
+          const introParagraph = cleanAcademicText((pageObj?.extract || '').split(/\n+/)[0] || '')
+            .replace(/\s+/g, ' ')
             .trim()
-
-          const fullScore = scorePassageRelevance({
-            questionText: `${qText} ${cleanTopic}`,
-            courseName,
-            assignmentName,
-            candidateTitle: bestHit.title,
-            candidateText: fullExtract,
-            candidateCategories: categories
-          })
-
-          if (fullExtract.length > 60 && fullScore >= 0.08) {
+          if (introParagraph.length > 50) {
             seenTitles.add(bestHit.title.toLowerCase())
-            sections.push(`${bestHit.title} (${cleanCourseLabel}):\n${fullExtract}`)
-            topicResolved = true
+            sections.push(introParagraph)
           }
         }
       }
     } catch {
-      // Ignore MediaWiki lookup errors and proceed to OpenAlex
+      // Ignore MediaWiki lookup errors
     }
-
-    // SOURCE B: OpenAlex Open-Source Scholarly Works API (250M+ peer-reviewed academic abstracts)
-    if (!topicResolved) {
-      try {
-        const oaQuery = encodeURIComponent(`${cleanTopic} ${profile.label || cleanCourseLabel}`.trim())
-        const oaUrl = `https://api.openalex.org/works?search=${oaQuery}&per-page=4`
-        const oaRes = await fetch(oaUrl)
-        if (oaRes.ok) {
-          const oaData = await oaRes.json()
-          const results = oaData?.results || []
-          for (const work of results) {
-            const abstractText = reconstructOpenAlexAbstract(work?.abstract_inverted_index)
-            if (!abstractText || abstractText.length < 80) continue
-            const workTitle = cleanAcademicText(work?.title || cleanTopic)
-            const relevance = scorePassageRelevance({
-              questionText: `${qText} ${cleanTopic}`,
-              courseName,
-              assignmentName,
-              candidateTitle: workTitle,
-              candidateText: abstractText
-            })
-            if (relevance >= 0.08 && !seenTitles.has(workTitle.toLowerCase())) {
-              seenTitles.add(workTitle.toLowerCase())
-              sections.push(`${cleanTopic} — Academic Analysis (${cleanCourseLabel}):\n${cleanAcademicText(abstractText)}`)
-              topicResolved = true
-              break
-            }
-          }
-        }
-      } catch {
-        // Ignore OpenAlex lookup errors
-      }
-    }
-  }
-
-  // If the question asked to Differentiate / Compare two concepts and we retrieved both, append a structured comparison summary
-  if (isComparisonQuestion && sections.length >= 2) {
-    const termA = topics[0]
-    const termB = topics[1]
-    const firstSentA = (sections[0].split('\n').slice(1).join(' ').split('. ')[0] || '').trim()
-    const firstSentB = (sections[1].split('\n').slice(1).join(' ').split('. ')[0] || '').trim()
-    sections.push(
-      [
-        `Key Comparison Summary — ${termA} vs. ${termB} (${cleanCourseLabel}):`,
-        `- Primary Definition of ${termA}: ${firstSentA}.`,
-        `- Primary Definition of ${termB}: ${firstSentB}.`,
-        `- Domain Application: Both ${termA} and ${termB} serve complementary roles within ${cleanCourseLabel} workflows depending on structural, performance, and operational requirements.`
-      ].join('\n')
-    )
   }
 
   if (sections.length > 0) {
@@ -7554,22 +7752,12 @@ export function synthesizeUniversalAcademicAnswer(
   if (directMatch) return directMatch
 
   const profile = resolveSubjectVectorProfile(courseName, assignmentName)
-  const subjectContext = cleanAcademicText(courseName || profile.label || assignmentName || 'Computer Science & Engineering')
-    .replace(/^(?:sem(?:ester)?\s*[-:]?\s*\d+|lab\s*task\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+)$/i, profile.label || 'Computer Science & Applications')
+  const subjectContext = cleanAcademicText(courseName || profile.label || assignmentName || 'Computer Science')
+    .replace(/^(?:sem(?:ester)?\s*[-:]?\s*\d+|lab\s*task\s*[-:]?\s*\d+|assignment\s*[-:]?\s*\d+)$/i, profile.label || 'Computer Science')
   const topics = extractSearchTopicsFromQuestion(qClean, subjectContext)
-  const primaryTopic = (topics[0] || qClean.slice(0, 70)).replace(/\s*[-:]+\s*$/, '').trim()
+  const primaryTopic = (topics[0] || qClean.replace(/^[0-9.)\s-]+/, '').slice(0, 70)).replace(/\s*[-:?]+\s*$/, '').trim()
 
-  return [
-    `${primaryTopic} (${subjectContext}):`,
-    `1. Conceptual Definition & Objective:\n` +
-      `   - Within ${subjectContext}, ${primaryTopic} addresses the core principles, structural rules, and operational methodology required to fulfill: "${qClean}".\n` +
-      `   - It establishes a well-defined input-to-output specification with modular components and verifiable properties.`,
-    `2. Step-by-Step Methodology & Architecture:\n` +
-      `   - Step 1 (Requirement & Parameter Setup): Identify the primary parameters, domain constraints, and workspace/environment settings for ${primaryTopic}.\n` +
-      `   - Step 2 (Core Processing & Construction): Apply the standard ${subjectContext} transformation rules, structural operations, and logical composition.\n` +
-      `   - Step 3 (Validation & Output Verification): Verify boundary conditions, formatting standards, and final output accuracy.`,
-    `3. Key Technical Characteristics & Applications:\n` +
-      `   - Ensures modularity, reproducibility, and adherence to university laboratory and theoretical evaluation criteria in ${subjectContext}.`
-  ].join('\n\n')
+  return `${primaryTopic} is a fundamental operation in ${subjectContext} that processes input parameters according to the defined domain rules to produce the required target output.`
 }
+
 

@@ -143,6 +143,8 @@ app.use(helmet({
         'https://fonts.gstatic.com',
         'https://formsubmit.co',
         'https://en.wikipedia.org',
+        'https://text.pollinations.ai',
+        'https://api.openalex.org',
         'blob:'
       ],
       frameSrc: ["'self'", 'https://docs.google.com', 'blob:'],
@@ -1440,24 +1442,84 @@ app.delete('/proxy/storage/:fileId', async (req, res) => {
 })
 
 // ── POST Pollinations AI Proxy (Open-Source Text AI for Bobby Assignment Solver)
+// Includes sequential mutex + retry on HTTP 402/429 + in-memory cache so concurrent student requests never fail
+const bobbyAiCache = new Map()
+const bobbyAiInFlight = new Map()
+let bobbyAiSerialQueue = Promise.resolve()
+let bobbyAiLastCallTime = 0
+
+function enqueueBobbyAiTask(fn) {
+  const next = bobbyAiSerialQueue.then(fn, fn)
+  bobbyAiSerialQueue = next.catch(() => {})
+  return next
+}
+
 app.post('/proxy/bobby-ai', async (req, res) => {
   try {
     const payload = req.body || {}
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20000)
-    const upstream = await fetch('https://text.pollinations.ai/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    })
-    clearTimeout(timer)
-    if (!upstream.ok) {
-      return res.status(upstream.status).send('Upstream AI error')
+    const userMsg = (payload.messages || []).find(m => m.role === 'user')?.content || JSON.stringify(payload)
+    const cacheKey = String(userMsg).trim().toLowerCase()
+
+    if (bobbyAiCache.has(cacheKey)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      return res.send(bobbyAiCache.get(cacheKey))
     }
-    const text = await upstream.text()
+
+    if (bobbyAiInFlight.has(cacheKey)) {
+      const sharedText = await bobbyAiInFlight.get(cacheKey)
+      if (sharedText) {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        return res.send(sharedText)
+      }
+    }
+
+    const fetchPromise = enqueueBobbyAiTask(async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const elapsed = Date.now() - bobbyAiLastCallTime
+          const minGap = attempt > 0 ? 4500 * attempt : 3500
+          if (bobbyAiLastCallTime > 0 && elapsed < minGap) {
+            await new Promise(r => setTimeout(r, minGap - elapsed))
+          }
+          bobbyAiLastCallTime = Date.now()
+
+          const controller = new AbortController()
+          const timer = setTimeout(() => controller.abort(), 45000)
+          const upstream = await fetch('https://text.pollinations.ai/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...payload,
+              seed: Number((payload.seed || 42) + attempt) % 100000
+            }),
+            signal: controller.signal
+          })
+          clearTimeout(timer)
+          if (upstream.ok) {
+            const text = await upstream.text()
+            if (text && text.trim().length > 15 && !/^\{\s*\}$/.test(text.trim())) {
+              if (bobbyAiCache.size > 1000) {
+                const oldestKey = bobbyAiCache.keys().next().value
+                bobbyAiCache.delete(oldestKey)
+              }
+              bobbyAiCache.set(cacheKey, text)
+              return text
+            }
+          }
+        } catch (_) {}
+      }
+      return null
+    })
+
+    bobbyAiInFlight.set(cacheKey, fetchPromise)
+    const resultText = await fetchPromise
+    bobbyAiInFlight.delete(cacheKey)
+
+    if (!resultText) {
+      return res.status(502).send('Upstream AI error')
+    }
     res.setHeader('Content-Type', 'text/plain; charset=utf-8')
-    res.send(text)
+    res.send(resultText)
   } catch (e) {
     res.status(502).json({ error: 'Pollinations AI proxy error' })
   }
